@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  admin
+  manager
+  reception
+  housekeeping
+  barista
+  security
+  finance
+  store
+}
+
+enum InventoryMoveType {
+  IN
+  OUT
+  ADJUST
+}
+
+enum PaymentServiceType {
+  ROOM
+  LAUNDRY
+  DINING
+  OTHER
+}
+
+model User {
+  id                  Int      @id @default(autoincrement())
+  name                String
+  email               String   @unique
+  // store hashed password here; field name must match what backend uses
+  password            String
+  // flag to require the user to change their password on first login
+  forceChangePassword Boolean  @default(false)
+  role                Role
+  staffId             Int?     @unique // 👈 optional link to Staff
+  staff               Staff?   @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model Staff {
+  id               Int          @id @default(autoincrement())
+  name             String
+  role             Role         @default(reception) // ← temporary default
+  phone            String       @default("UNKNOWN") // ← temporary default
+  emergencyContact String?
+  barcode          String       @unique
+  attendance       Attendance[]
+  user             User?
+}
+
+model Guest {
+  id       Int       @id @default(autoincrement())
+  name     String
+  phone    String
+  email    String?
+  bookings Booking[]
+  laundry  Laundry[]
+  payments Payment[] // ← NEW back-relation
+}
+
+model Room {
+  id       Int       @id @default(autoincrement())
+  number   String    @unique
+  type     String
+  price    Float
+  bookings Booking[]
+}
+
+model Booking {
+  id       Int      @id @default(autoincrement())
+  guestId  Int
+  roomId   Int
+  checkIn  DateTime
+  checkOut DateTime
+
+  guest Guest @relation(fields: [guestId], references: [id])
+  room  Room  @relation(fields: [roomId], references: [id])
+
+  // back-relation to Payment (no FK here)
+  payment Payment?
+}
+
+model Payment {
+  id          Int                 @id @default(autoincrement())
+  bookingId   Int?                @unique // ← optional now
+  laundryId   Int?                @unique // ← NEW optional 1-1
+  guestId     Int                 // ← NEW required guest link
+  amount      Float
+  method      String
+  status      String
+  description String?
+  createdAt   DateTime            @default(now())
+  serviceType PaymentServiceType  @default(ROOM) // ← NEW
+
+  booking Booking? @relation(fields: [bookingId], references: [id])
+  laundry Laundry? @relation(fields: [laundryId], references: [id])
+  guest   Guest   @relation(fields: [guestId], references: [id])
+}
+
+model Attendance {
+  id       Int       @id @default(autoincrement())
+  staffId  Int
+  date     DateTime
+  checkIn  DateTime
+  checkOut DateTime?
+
+  staff Staff @relation(fields: [staffId], references: [id])
+}
+
+model Laundry {
+  id        Int      @id @default(autoincrement())
+  guestId   Int
+  items     String
+  status    String
+  price     Float    @default(0) // ← NEW price per laundry
+  createdAt DateTime @default(now())
+
+  guest   Guest   @relation(fields: [guestId], references: [id])
+  payment Payment? // ← NEW back-relation (via Payment.laundryId)
+}
+
+model Inventory {
+  id           Int      @id @default(autoincrement())
+  name         String
+  category     String
+  unit         String? // e.g. pcs, kg, L
+  sku          String?  @unique
+  quantity     Int      @default(0)
+  minThreshold Int      @default(0) // low-stock trigger
+  updatedAt    DateTime @updatedAt
+
+  movements InventoryMovement[]
+}
+
+model InventoryMovement {
+  id          Int               @id @default(autoincrement())
+  inventoryId Int
+  type        InventoryMoveType
+  quantity    Int // positive number
+  reason      String?
+  createdAt   DateTime          @default(now())
+  // If you later want to track who did it:
+  // userId    Int?
+  // user      User? @relation(fields: [userId], references: [id])
+
+  inventory Inventory @relation(fields: [inventoryId], references: [id])
+}
