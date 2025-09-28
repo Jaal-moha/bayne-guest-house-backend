@@ -1,26 +1,4 @@
-# FROM node:22-alpine
-
-# WORKDIR /app
-
-# COPY package*.json ./
-# COPY prisma ./prisma/
-
-# RUN npm install
-
-
-# COPY . .
-
-# RUN npm run build
-
-# EXPOSE 3000
-
-# ENV PORT=3000
-# ENV NODE_ENV=production
-
-# CMD ["npm", "run", "start:prod"]
-
-# Use the official Node.js image as the base image
-FROM node:20
+FROM node:22
 
 # Set the working directory inside the container
 WORKDIR /usr/src/app
@@ -30,7 +8,7 @@ COPY package*.json ./
 COPY prisma ./prisma/
 
 # Install the application dependencies
-RUN npm install
+RUN npm ci --only=production
 
 # Copy the rest of the application files
 COPY . .
@@ -42,4 +20,7 @@ RUN npm run build
 EXPOSE 3000
 
 # Command to run the application
-CMD ["node", "dist/src/main"]
+CMD ["npm", "run", "start:prod"]
+
+HEALTHCHECK  --interval=5m --timeout=3s \
+  CMD curl --fail --silent http://localhost:3000/health/ || exit 1
