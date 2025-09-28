@@ -6,7 +6,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 
 async function bootstrap() {
   const uploadPath = join(__dirname, '/upload/staff-ids');
-  existsSync(uploadPath) || mkdirSync(uploadPath)
+  existsSync(uploadPath) || mkdirSync(uploadPath,{ recursive: true });
   const app = await NestFactory.create(AppModule);
   
   // Enable CORS for frontend communication
