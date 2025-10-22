@@ -1,24 +1,56 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { Test, TestingModule } from '@nestjs/testing';
+import { UnauthorizedException } from '@nestjs/common';
+import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
+import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 
-@Injectable()
-export class AuthService {
-  constructor(private users: UsersService, private jwt: JwtService) {}
+describe('AuthService', () => {
+  let service: AuthService;
+  let usersService: { findByEmail: jest.Mock; };
+  let jwtService: { signAsync: jest.Mock; };
 
-  async validateUser(email: string, password: string) {
-    const user = await this.users.findByEmail(email);
-    if (!user) throw new UnauthorizedException('Invalid credentials');
-    const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) throw new UnauthorizedException('Invalid credentials');
-    return user;
-  }
+  beforeEach(async () => {
+    usersService = { findByEmail: jest.fn() };
+    jwtService = { signAsync: jest.fn().mockResolvedValue('token') } as any;
 
-  async login(email: string, password: string) {
-    const user = await this.validateUser(email, password);
-    const payload = { sub: user.id, email: user.email, role: user.role, name: user.name };
-    const access_token = await this.jwt.signAsync(payload);
-    return { access_token };
-  }
-}
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: UsersService, useValue: usersService },
+        { provide: JwtService, useValue: jwtService },
+      ],
+    }).compile();
+
+    service = module.get<AuthService>(AuthService);
+  });
+
+  it('should login with valid credentials', async () => {
+    const password = 'secret';
+    const hash = await bcrypt.hash(password, 8);
+    usersService.findByEmail.mockResolvedValue({
+      id: 1,
+      email: 'a@b.com',
+      name: 'A',
+      role: 'admin',
+      password: hash,
+    });
+
+    const res = await service.login('a@b.com', password);
+    expect(res).toEqual({ access_token: 'token' });
+    expect(jwtService.signAsync).toHaveBeenCalled();
+  });
+
+  it('should reject invalid password', async () => {
+    const hash = await bcrypt.hash('secret', 8);
+    usersService.findByEmail.mockResolvedValue({
+      id: 1,
+      email: 'a@b.com',
+      name: 'A',
+      role: 'admin',
+      password: hash,
+    });
+
+    await expect(service.login('a@b.com', 'wrong')).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+});

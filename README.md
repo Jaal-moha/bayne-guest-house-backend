@@ -25,6 +25,19 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Rooms API
+
+- Create room: POST `/rooms` { number: string, type: string, price: number }
+- List rooms: GET `/rooms`
+- Get room: GET `/rooms/:id`
+- Update room: PATCH `/rooms/:id` with any of { number?, type?, price? }
+- Delete room: DELETE `/rooms/:id`
+
+Notes:
+
+- Auth required: JWT with roles. Update/delete require `admin` or `manager` roles; read requires `admin`, `manager`, or `reception`.
+- Validation: `number` and `type` min length 3; `price` >= 500.
+
 ## Project setup
 
 ```bash
