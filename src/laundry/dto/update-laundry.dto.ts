@@ -1,4 +1,5 @@
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsNumber, Min, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { LAUNDRY_STATUSES } from './create-laundry.dto';
 
 export class UpdateLaundryDto {
@@ -10,4 +11,10 @@ export class UpdateLaundryDto {
   @IsOptional()
   @IsIn(LAUNDRY_STATUSES as unknown as string[])
   status?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  price?: number;
 }

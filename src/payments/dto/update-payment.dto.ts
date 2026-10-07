@@ -1,8 +1,10 @@
+import { Type } from 'class-transformer';
 import { IsIn, IsNumber, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PAYMENT_METHODS, PAYMENT_STATUSES } from './create-payment.dto';
 
 export class UpdatePaymentDto {
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   amount?: number;
 
