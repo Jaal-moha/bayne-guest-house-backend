@@ -30,6 +30,16 @@ describe('POST /attendance/scan race', () => {
   };
 
   beforeAll(async () => {
+    jest.useFakeTimers({
+      doNotFake: [
+        'nextTick',
+        'setImmediate',
+        'setTimeout',
+        'setInterval',
+        'queueMicrotask',
+      ],
+    });
+    jest.setSystemTime(new Date('2026-10-08T05:00:00Z'));
     process.env.ATTENDANCE_API_KEY = 'test-key';
     const moduleRef = await Test.createTestingModule({
       controllers: [AttendanceScanController],
@@ -45,7 +55,10 @@ describe('POST /attendance/scan race', () => {
     await app.init();
   });
 
-  afterAll(() => app.close());
+  afterAll(async () => {
+    jest.useRealTimers();
+    await app.close();
+  });
 
   it('reports a check-in with the existing row when a concurrent scan inserted it first', async () => {
     const res = await request(app.getHttpServer())
@@ -55,5 +68,23 @@ describe('POST /attendance/scan race', () => {
       .expect(201);
     expect(res.body.action).toBe('CHECK_IN');
     expect(res.body.attendance.id).toBe(winner.id);
+    expect(prisma.attendance.findUnique).toHaveBeenCalledWith({
+      where: {
+        staffId_date: {
+          staffId: staff.id,
+          date: new Date('2026-10-07T21:00:00.000Z'),
+        },
+      },
+    });
+  });
+
+  it('does not report a check-in when the unique violation has no matching row', async () => {
+    prisma.attendance.findUnique.mockResolvedValueOnce(null);
+    const res = await request(app.getHttpServer())
+      .post('/attendance/scan')
+      .set('x-api-key', 'test-key')
+      .send({ code: staff.barcode })
+      .expect(500);
+    expect(res.body.action).toBeUndefined();
   });
 });
