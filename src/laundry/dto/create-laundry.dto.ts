@@ -1,10 +1,10 @@
-import { Type } from 'class-transformer';
+import { ToOptionalNumber } from '../../validation';
 import { IsNumber, Min, IsInt, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export const LAUNDRY_STATUSES = ['pending', 'in_progress', 'done'] as const;
 
 export class CreateLaundryDto {
-  @Type(() => Number)
+  @ToOptionalNumber()
   @IsInt()
   guestId!: number;
 
@@ -17,7 +17,7 @@ export class CreateLaundryDto {
   status?: string; // default 'pending' if omitted
 
   @IsOptional()
-  @Type(() => Number)
+  @ToOptionalNumber()
   @IsNumber()
   @Min(0)
   price?: number;

@@ -1,4 +1,5 @@
-import { Transform, Type } from 'class-transformer';
+import { ToOptionalNumber } from '../../validation';
+import { Transform } from 'class-transformer';
 import { PaymentServiceType } from '@prisma/client';
 import { IsEnum, IsInt, IsIn, IsNumber, IsOptional, IsString, MaxLength } from 'class-validator';
 
@@ -11,17 +12,17 @@ export class CreatePaymentDto {
   serviceType?: PaymentServiceType;
 
   @IsOptional()
-  @Type(() => Number)
+  @ToOptionalNumber()
   @IsInt()
   bookingId?: number;
 
   @IsOptional()
-  @Type(() => Number)
+  @ToOptionalNumber()
   @IsInt()
   laundryId?: number;
 
   @IsOptional()
-  @Type(() => Number)
+  @ToOptionalNumber()
   @IsInt()
   guestId?: number;
 
@@ -31,7 +32,7 @@ export class CreatePaymentDto {
   details?: Record<string, unknown>;
 
   @IsOptional()
-  @Type(() => Number)
+  @ToOptionalNumber()
   @IsNumber()
   amount?: number;
 
