@@ -1,3 +1,8 @@
+BEGIN;
+
+-- Block concurrent scans so no duplicate lands between the merge and the index build.
+LOCK TABLE "public"."Attendance" IN SHARE ROW EXCLUSIVE MODE;
+
 -- Merge rows that share (staffId, date) into the lowest id, keeping the
 -- earliest check-in and the latest check-out, so the unique index can be built.
 WITH grouped AS (
@@ -17,3 +22,5 @@ WHERE a."staffId" = b."staffId" AND a."date" = b."date" AND a."id" > b."id";
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Attendance_staffId_date_key" ON "public"."Attendance"("staffId", "date");
+
+COMMIT;

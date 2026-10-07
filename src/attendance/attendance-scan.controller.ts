@@ -133,7 +133,7 @@ export class AttendanceScanController {
         const attendance = await this.prisma.attendance.findUnique({
           where: { staffId_date: { staffId: staff.id, date: dayStartUtc } },
         });
-        return { action: 'CHECK_IN' as AttendanceAction, staff, attendance, day: dayKey };
+        if (attendance) return { action: 'CHECK_IN' as AttendanceAction, staff, attendance, day: dayKey };
       }
       rethrowPrisma(e);
     }
