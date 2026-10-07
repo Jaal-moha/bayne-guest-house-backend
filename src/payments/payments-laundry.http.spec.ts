@@ -218,4 +218,14 @@ describe('Payments and laundry HTTP bodies', () => {
     await send('/payments/1', 'patch', { amount: '' }, 'finance').expect(200);
     expect(payments.update.mock.calls[0][1].amount).toBeUndefined();
   });
+
+  it('accepts a lowercase service type as before', async () => {
+    await send('/payments', 'post', {
+      serviceType: 'dining',
+      guestId: 2,
+      amount: 25,
+      method: 'cash',
+    }).expect(201);
+    expect(payments.create.mock.calls[0][0].serviceType).toBe('DINING');
+  });
 });
