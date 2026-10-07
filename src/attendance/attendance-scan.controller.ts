@@ -1,0 +1,142 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Controller,
+  NotFoundException,
+  Post,
+  Req,
+  Body,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { PrismaService } from '../prisma/prisma.service';
+import type { Request } from 'express';
+
+// Addis Ababa (UTC+3) local day → return day key and UTC bounds for that local day
+function getAddisDayContext(nowUtc = new Date()) {
+  const offsetMin = 180; // UTC+3
+  const offsetMs = offsetMin * 60 * 1000;
+  const addisMs = nowUtc.getTime() + offsetMs;
+  const addisNow = new Date(addisMs);
+  const y = addisNow.getUTCFullYear();
+  const m = addisNow.getUTCMonth();
+  const d = addisNow.getUTCDate();
+  const dayKey = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const dayStartUtc = new Date(Date.UTC(y, m, d) - offsetMs);
+  const dayEndUtc = new Date(dayStartUtc.getTime() + 24 * 60 * 60 * 1000);
+  return { dayKey, dayStartUtc, dayEndUtc, nowUtc };
+}
+
+type AttendanceAction = 'CHECK_IN' | 'CHECK_OUT' | 'ALREADY_CHECKED_OUT';
+
+// Optional: map common Prisma errors to readable responses
+function rethrowPrisma(e: any): never {
+  // Unique violation -> 409 (client may retry)
+  if (e?.code === 'P2002') {
+    throw new ConflictException('Duplicate attendance for day, please retry');
+  }
+  // Foreign key or validation errors -> 400
+  if (e?.code === 'P2003' || e?.code === 'P2000' || e?.code === 'P2011') {
+    throw new BadRequestException(e?.meta?.field_name || e?.message || 'Invalid data');
+  }
+  // Not found on update/delete -> 404
+  if (e?.code === 'P2025') {
+    throw new NotFoundException('Record not found');
+  }
+  throw e;
+}
+
+@Controller('attendance')
+export class AttendanceScanController {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwt: JwtService,
+  ) {}
+
+  private async hasValidToken(req: Request): Promise<boolean> {
+    const token = req.headers.authorization?.replace(/^bearer\s+/i, '');
+    if (!token) return false;
+    try {
+      await this.jwt.verifyAsync(token);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  @Post('scan')
+  async scan(@Body() body: { code?: string; token?: string }, @Req() req: Request) {
+    const apiKeyHeader =
+      (req.headers['x-api-key'] as string | undefined) ||
+      (req.headers['x-api-token'] as string | undefined);
+    const apiKeyValid =
+      !!apiKeyHeader && !!process.env.ATTENDANCE_API_KEY && apiKeyHeader === process.env.ATTENDANCE_API_KEY;
+    if (!apiKeyValid && !(await this.hasValidToken(req))) {
+      throw new UnauthorizedException('Missing or invalid credentials');
+    }
+
+    // Accept body.code or body.token from mobile scanners; normalize common QR prefixes
+    const raw = (body?.code?.trim() || body?.token?.trim() || '');
+    if (!raw) throw new BadRequestException('code is required');
+
+    const code = raw
+      .replace(/^ATT[:\-]/i, '')   // ATT:XYZ → XYZ
+      .replace(/^STAFF[:\-]/i, '') // STAFF-XYZ → XYZ
+      .trim();
+
+    // Find staff by static barcode/QR code
+    const staff = await this.prisma.staff.findUnique({
+      where: { barcode: code },
+      select: { id: true, name: true, role: true, barcode: true },
+    });
+    if (!staff) throw new NotFoundException('Staff not found');
+
+    const { dayKey, dayStartUtc, dayEndUtc, nowUtc } = getAddisDayContext(new Date());
+
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
+        // Enforce one row per Addis day using the 'date' column within local-day bounds
+        const existing = await tx.attendance.findFirst({
+          where: {
+            staffId: staff.id,
+            date: { gte: dayStartUtc, lt: dayEndUtc },
+          },
+          orderBy: { date: 'desc' },
+        });
+
+        if (!existing) {
+          // First scan -> check-in
+          const created = await tx.attendance.create({
+            data: {
+              staffId: staff.id,
+              date: dayStartUtc,
+              checkIn: nowUtc,
+              // method/locationId/etc if applicable
+            },
+          });
+          const attendance = await tx.attendance.findUnique({ where: { id: created.id } });
+          return { action: 'CHECK_IN' as AttendanceAction, attendance };
+        }
+
+        if (existing.checkOut) {
+          return { action: 'ALREADY_CHECKED_OUT' as AttendanceAction, attendance: existing };
+        }
+
+        const updated = await tx.attendance.update({
+          where: { id: existing.id },
+          data: { checkOut: nowUtc },
+        });
+        return { action: 'CHECK_OUT' as AttendanceAction, attendance: updated };
+      });
+
+      return {
+        action: result.action,
+        staff,
+        attendance: result.attendance,
+        day: dayKey,
+      };
+    } catch (e: any) {
+      rethrowPrisma(e);
+    }
+  }
+}
