@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   Controller,
   NotFoundException,
   Post,
@@ -29,12 +28,7 @@ function getAddisDayContext(nowUtc = new Date()) {
 
 type AttendanceAction = 'CHECK_IN' | 'CHECK_OUT' | 'ALREADY_CHECKED_OUT';
 
-// Optional: map common Prisma errors to readable responses
 function rethrowPrisma(e: any): never {
-  // Unique violation -> 409 (client may retry)
-  if (e?.code === 'P2002') {
-    throw new ConflictException('Duplicate attendance for day, please retry');
-  }
   // Foreign key or validation errors -> 400
   if (e?.code === 'P2003' || e?.code === 'P2000' || e?.code === 'P2011') {
     throw new BadRequestException(e?.meta?.field_name || e?.message || 'Invalid data');
@@ -95,7 +89,6 @@ export class AttendanceScanController {
 
     try {
       const result = await this.prisma.$transaction(async (tx) => {
-        // Enforce one row per Addis day using the 'date' column within local-day bounds
         const existing = await tx.attendance.findFirst({
           where: {
             staffId: staff.id,
@@ -111,7 +104,6 @@ export class AttendanceScanController {
               staffId: staff.id,
               date: dayStartUtc,
               checkIn: nowUtc,
-              // method/locationId/etc if applicable
             },
           });
           const attendance = await tx.attendance.findUnique({ where: { id: created.id } });
@@ -136,6 +128,13 @@ export class AttendanceScanController {
         day: dayKey,
       };
     } catch (e: any) {
+      // A concurrent first scan won the insert for today's row, so this scan is the same check-in.
+      if (e?.code === 'P2002') {
+        const attendance = await this.prisma.attendance.findUnique({
+          where: { staffId_date: { staffId: staff.id, date: dayStartUtc } },
+        });
+        return { action: 'CHECK_IN' as AttendanceAction, staff, attendance, day: dayKey };
+      }
       rethrowPrisma(e);
     }
   }
