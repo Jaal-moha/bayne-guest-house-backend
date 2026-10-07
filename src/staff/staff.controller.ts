@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, UseGuards, Res, NotFoundException, Req, ForbiddenException, Put, Delete } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, UseGuards, Res, Req, ForbiddenException, Put, Delete } from '@nestjs/common';
 import { StaffService } from './staff.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
@@ -41,13 +41,9 @@ export class StaffController {
       throw new ForbiddenException('Access denied');
     }
 
-    if (user.role !== 'admin' && userId !== id) {
-      throw new ForbiddenException('Access denied');
-    }
-
     const staff = await this.staffService.findOne(id);
-    if (!staff) {
-      throw new NotFoundException('Staff not found');
+    if (user.role !== 'admin' && staff.user?.id !== userId) {
+      throw new ForbiddenException('Access denied');
     }
 
     // Generate QR code (use barcode or fallback to id)
