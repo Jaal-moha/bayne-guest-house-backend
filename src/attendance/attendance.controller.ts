@@ -8,7 +8,7 @@ import { RolesGuard } from '../auth/roles.guard';
 
 @Controller('attendance')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('admin', 'manager')
+@Roles('admin', 'manager', 'reception')
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 

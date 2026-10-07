@@ -22,7 +22,7 @@ let movementSeq = 1;
 
 @Controller('inventory')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('admin', 'manager', 'store')
+@Roles('admin', 'manager', 'store', 'barista', 'reception')
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
