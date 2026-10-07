@@ -128,12 +128,15 @@ export class AttendanceScanController {
         day: dayKey,
       };
     } catch (e: any) {
-      // A concurrent first scan won the insert for today's row, so this scan is the same check-in.
+      // Another writer created today's row first, so report that row instead of failing.
       if (e?.code === 'P2002') {
         const attendance = await this.prisma.attendance.findUnique({
           where: { staffId_date: { staffId: staff.id, date: dayStartUtc } },
         });
-        if (attendance) return { action: 'CHECK_IN' as AttendanceAction, staff, attendance, day: dayKey };
+        if (attendance) {
+          const action: AttendanceAction = attendance.checkOut ? 'ALREADY_CHECKED_OUT' : 'CHECK_IN';
+          return { action, staff, attendance, day: dayKey };
+        }
       }
       rethrowPrisma(e);
     }
