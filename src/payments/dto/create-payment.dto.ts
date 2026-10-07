@@ -8,6 +8,7 @@ export const PAYMENT_STATUSES = ['paid', 'refunded', 'failed', 'unpaid'] as cons
 
 export class CreatePaymentDto {
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.toUpperCase() : value))
   @IsEnum(PaymentServiceType)
   serviceType?: PaymentServiceType;
 
