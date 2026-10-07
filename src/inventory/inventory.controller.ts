@@ -94,6 +94,7 @@ export class InventoryController {
   }
 
   @Patch(':id')
+  @Roles('admin', 'manager', 'store')
   update(@Param('id', ParseIntPipe) id: number, @Body() updateInventoryDto: UpdateInventoryDto) {
     return this.inventoryService.update(id, updateInventoryDto);
   }

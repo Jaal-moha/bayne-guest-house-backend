@@ -8,7 +8,7 @@ import { RolesGuard } from '../auth/roles.guard';
 
 @Controller('attendance')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('admin', 'manager', 'reception')
+@Roles('admin', 'manager')
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
@@ -18,6 +18,7 @@ export class AttendanceController {
   }
 
   @Get()
+  @Roles('admin', 'manager', 'reception')
   findAll() {
     return this.attendanceService.findAll();
   }
@@ -33,6 +34,7 @@ export class AttendanceController {
   }
 
   @Delete(':id')
+  @Roles('admin', 'manager', 'reception')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.attendanceService.remove(id);
   }
