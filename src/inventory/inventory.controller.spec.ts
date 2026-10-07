@@ -50,14 +50,17 @@ describe('InventoryController auth', () => {
   it('rejects a role outside inventory', async () => {
     await request(app.getHttpServer())
       .get('/inventory')
-      .set('Authorization', tokenFor('barista'))
+      .set('Authorization', tokenFor('finance'))
       .expect(403);
   });
 
-  it('allows the store role', async () => {
-    await request(app.getHttpServer())
-      .get('/inventory')
-      .set('Authorization', tokenFor('store'))
-      .expect(200);
-  });
+  it.each(['store', 'barista', 'reception'])(
+    'allows the %s role',
+    async (role) => {
+      await request(app.getHttpServer())
+        .get('/inventory')
+        .set('Authorization', tokenFor(role))
+        .expect(200);
+    },
+  );
 });
