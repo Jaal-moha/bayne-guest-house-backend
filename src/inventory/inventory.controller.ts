@@ -1,4 +1,7 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, BadRequestException, Query, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, BadRequestException, Query, ParseIntPipe, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 import { InventoryService } from './inventory.service';
 import { CreateInventoryDto } from './dto/create-inventory.dto';
 import { UpdateInventoryDto } from './dto/update-inventory.dto';
@@ -18,6 +21,8 @@ const movementStore: Record<number, InventoryMovement[]> = {};
 let movementSeq = 1;
 
 @Controller('inventory')
+@UseGuards(AuthGuard('jwt'), RolesGuard)
+@Roles('admin', 'manager', 'store')
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
