@@ -78,6 +78,19 @@ describe('POST /attendance/scan race', () => {
     });
   });
 
+  it('reports the winner as already checked out when it has a check-out', async () => {
+    prisma.attendance.findUnique.mockResolvedValueOnce({
+      ...winner,
+      checkOut: new Date('2026-10-08T04:00:00Z'),
+    });
+    const res = await request(app.getHttpServer())
+      .post('/attendance/scan')
+      .set('x-api-key', 'test-key')
+      .send({ code: staff.barcode })
+      .expect(201);
+    expect(res.body.action).toBe('ALREADY_CHECKED_OUT');
+  });
+
   it('does not report a check-in when the unique violation has no matching row', async () => {
     prisma.attendance.findUnique.mockResolvedValueOnce(null);
     const res = await request(app.getHttpServer())
