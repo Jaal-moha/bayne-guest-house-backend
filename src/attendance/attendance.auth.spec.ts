@@ -107,6 +107,11 @@ describe('Attendance auth', () => {
       .expect(404);
     await http()
       .post('/attendance/scan')
+      .set('Authorization', bearer('security').replace('Bearer ', ''))
+      .send({ code: 'EMP-1' })
+      .expect(404);
+    await http()
+      .post('/attendance/scan')
       .set('x-api-key', 'test-key')
       .send({ code: 'EMP-1' })
       .expect(404);
