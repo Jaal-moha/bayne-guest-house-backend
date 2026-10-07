@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+# Every subcommand prints fixed-format lines and exits 0 on success, 1 on failure.
+set -uo pipefail
+
+ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
+ID="${VERIFY_ID:-default}"
+RUN_DIR="$ROOT/.verify/run-$ID"
+EVIDENCE_ROOT="$ROOT/.verify/evidence/$ID"
+STATE="$RUN_DIR/state.env"
+ADMIN_EMAIL="admin@example.com"
+ADMIN_PASSWORD="admin123"
+PG_PKG="@embedded-postgres/linux-x64@16.14.0-beta.17"
+PG_HOME="$ROOT/.verify/tools/node_modules/@embedded-postgres/linux-x64"
+PG_BIN="$PG_HOME/native/bin"
+
+EXTRA_HEADERS=()
+
+die() { echo "FAIL $*"; exit 1; }
+
+load_state() {
+  [[ -f "$STATE" ]] || die "no-instance run 'control.sh up' first (VERIFY_ID=$ID)"
+  source "$STATE"
+}
+
+free_port() { node -e 'const s=require("net").createServer();s.listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})'; }
+
+server_alive() {
+  [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null &&
+    tr '\0' ' ' <"/proc/$SERVER_PID/cmdline" 2>/dev/null | grep -q "dist/src/main"
+}
+
+http() {
+  local method="$1" path="$2" token="$3" body="${4:-}"
+  local args=(-s -o "$RUN_DIR/last.body" -w '%{http_code}' -X "$method" "$BASE_URL$path")
+  [[ -n "$token" ]] && args+=(-H "Authorization: Bearer $token")
+  local h; for h in "${EXTRA_HEADERS[@]}"; do args+=(-H "$h"); done
+  [[ -n "$body" ]] && args+=(-H 'Content-Type: application/json' --data "$body")
+  curl "${args[@]}"
+}
+
+cmd_up() {
+  if [[ -f "$STATE" ]]; then
+    if cmd_doctor >/dev/null; then load_state; echo "READY base=$BASE_URL id=$ID"; return 0; fi
+    cmd_down >/dev/null
+  fi
+  local evidence="$EVIDENCE_ROOT/$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "$RUN_DIR" "$evidence"
+  local log="$RUN_DIR/up.log"; : >"$log"
+
+  [[ -d "$ROOT/node_modules/@nestjs/core" ]] || (cd "$ROOT" && npm ci --no-audit --no-fund >>"$log" 2>&1) || die "npm-ci log=$log"
+  (cd "$ROOT" && npx prisma generate >>"$log" 2>&1) || die "prisma-generate log=$log"
+
+  if [[ ! -f "$PG_HOME/.hydrated" ]]; then
+    npm install --prefix "$ROOT/.verify/tools" --no-audit --no-fund "$PG_PKG" >>"$log" 2>&1 || die "install-postgres log=$log"
+    (cd "$PG_HOME" && node scripts/hydrate-symlinks.js >>"$log" 2>&1 && touch .hydrated) || die "hydrate-postgres log=$log"
+  fi
+  local pg_port app_port
+  pg_port="$(free_port)"; app_port="$(free_port)"
+  "$PG_BIN/initdb" -D "$RUN_DIR/pgdata" -U postgres --auth=trust >>"$log" 2>&1 || die "initdb log=$log"
+  "$PG_BIN/pg_ctl" -D "$RUN_DIR/pgdata" -l "$RUN_DIR/postgres.log" -w -t 60 \
+    -o "-p $pg_port -c listen_addresses=127.0.0.1 -c unix_socket_directories=''" start >>"$log" 2>&1 || die "postgres-start log=$RUN_DIR/postgres.log"
+  psql -h 127.0.0.1 -p "$pg_port" -U postgres -d postgres -c 'create database bgh' >>"$log" 2>&1 || die "createdb log=$log"
+  local db_url="postgresql://postgres@127.0.0.1:$pg_port/bgh?schema=public"
+  cat >"$STATE" <<EOF
+EVIDENCE_DIR=$evidence
+PG_PORT=$pg_port
+DATABASE_URL='$db_url'
+APP_PORT=$app_port
+BASE_URL=http://127.0.0.1:$app_port
+JWT_SECRET=verify-jwt-secret
+ATTENDANCE_API_KEY=verify-attendance-key
+GIT_REV=$(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet HEAD -- src prisma || echo -dirty)
+EOF
+
+  local i
+  (cd "$ROOT" && DATABASE_URL="$db_url" DIRECT_URL="$db_url" npx prisma migrate deploy >>"$log" 2>&1) || die "migrate log=$log"
+  (cd "$ROOT" && DATABASE_URL="$db_url" DIRECT_URL="$db_url" npx prisma db seed >>"$log" 2>&1) || die "seed log=$log"
+  (cd "$ROOT" && npm run build >>"$log" 2>&1) || die "build log=$log"
+
+  (cd "$ROOT" && exec env DATABASE_URL="$db_url" DIRECT_URL="$db_url" PORT="$app_port" \
+    JWT_SECRET=verify-jwt-secret ATTENDANCE_API_KEY=verify-attendance-key \
+    nohup node dist/src/main >"$RUN_DIR/server.log" 2>&1) &
+  echo "SERVER_PID=$!" >>"$STATE"
+  load_state
+
+  for i in $(seq 60); do
+    [[ "$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/health")" == 200 ]] && break
+    server_alive || die "server-exited log=$RUN_DIR/server.log"
+    sleep 1
+  done
+  [[ "$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/health")" == 200 ]] || die "health-timeout log=$RUN_DIR/server.log"
+  echo "READY base=$BASE_URL id=$ID rev=$GIT_REV evidence=$EVIDENCE_DIR"
+}
+
+cmd_doctor() {
+  local fails=0
+  check() { if eval "$2" >/dev/null 2>&1; then echo "OK $1"; else echo "FAIL $1"; fails=$((fails+1)); fi; }
+  [[ -f "$STATE" ]] || { echo "FAIL state no-instance"; echo "DOCTOR FAIL"; return 1; }
+  load_state
+  check postgres "pg_isready -h 127.0.0.1 -p $PG_PORT -U postgres"
+  check server-pid "server_alive"
+  check port-owner "ss -ltnpH 'sport = :$APP_PORT' | grep -q 'pid=$SERVER_PID,'"
+  check health "[[ \$(curl -s $BASE_URL/health | jq -r .ok) == true ]]"
+  check admin-login "[[ \$(http POST /auth/login '' '{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}') == 201 ]]"
+  local head; head="$(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet HEAD -- src prisma || echo -dirty)"
+  if [[ "$head" == "$GIT_REV" ]]; then echo "OK build-rev $GIT_REV"; else echo "STALE build-rev built=$GIT_REV now=$head (run down then up to rebuild)"; fi
+  if (( fails == 0 )); then echo "DOCTOR PASS base=$BASE_URL"; else echo "DOCTOR FAIL"; return 1; fi
+}
+
+cmd_token() {
+  local role="${1:?usage: token <role>}"
+  load_state
+  local cache="$RUN_DIR/token-$role"
+  [[ -s "$cache" ]] && { cat "$cache"; return 0; }
+  local email="$ADMIN_EMAIL" password="$ADMIN_PASSWORD"
+  if [[ "$role" != admin ]]; then
+    email="verify-$role@example.com"; password="verify-pass-$role"
+    local admin; admin="$(cmd_token admin)" || exit 1
+    local code; code="$(http POST /staff "$admin" "$(jq -nc --arg r "$role" --arg e "$email" --arg p "$password" \
+      '{name:("Verify "+$r), role:$r, phone:"0911000000", username:$e, password:$p, forceChangePassword:false}')")"
+    [[ "$code" == 201 ]] || die "create-staff role=$role http=$code body=$(cat "$RUN_DIR/last.body")"
+  fi
+  local code; code="$(http POST /auth/login '' "$(jq -nc --arg e "$email" --arg p "$password" '{email:$e,password:$p}')")"
+  [[ "$code" == 201 ]] || die "login role=$role http=$code body=$(cat "$RUN_DIR/last.body")"
+  jq -er .access_token "$RUN_DIR/last.body" >"$cache" || die "no-token role=$role"
+  cat "$cache"
+}
+
+cmd_call() {
+  local expect=""
+  while [[ "${1:-}" == --* ]]; do
+    case "$1" in
+      --expect) expect="$2" ;;
+      --header) EXTRA_HEADERS+=("$2") ;;
+      *) die "unknown-flag $1" ;;
+    esac
+    shift 2
+  done
+  local who="${1:?usage: call [--expect CODE] [--header 'K: V'] <role|anon> <METHOD> <PATH> [JSON]}" method="${2:?}" path="${3:?}" body="${4:-}"
+  load_state
+  local token=""
+  [[ "$who" != anon ]] && { token="$(cmd_token "$who")" || { echo "$token"; exit 1; }; }
+  local code; code="$(http "$method" "$path" "$token" "$body")"
+  local seq; seq=$(( $(find "$EVIDENCE_DIR" -maxdepth 1 -name '*.json' | wc -l) + 1 ))
+  local file; file="$EVIDENCE_DIR/$(printf '%03d' "$seq")-$who-$method-$(echo "$path" | tr -c 'a-zA-Z0-9\n' '_' | cut -c2-60).json"
+  local resp
+  if [[ ! -s "$RUN_DIR/last.body" ]]; then resp=null
+  elif ! resp="$(jq -c . "$RUN_DIR/last.body" 2>/dev/null)"; then resp="$(jq -Rsc . "$RUN_DIR/last.body")"; fi
+  local hdrs; hdrs="$(printf '%s\n' "${EXTRA_HEADERS[@]}" | jq -Rsc 'split("\n")|map(select(length>0))')"
+  jq -n --arg who "$who" --arg m "$method" --arg p "$path" --arg b "$body" --argjson h "$hdrs" --argjson s "$code" --argjson r "$resp" \
+    --arg at "$(date -u +%FT%TZ)" '{at:$at, request:{as:$who, method:$m, path:$p, headers:$h, body:($b|fromjson? // $b)}, response:{status:$s, body:$r}}' >"$file"
+  cp "$file" "$RUN_DIR/last.json"
+  echo "HTTP $code"
+  echo "EVIDENCE $file"
+  jq -c .response.body "$file"
+  if [[ -n "$expect" && "$code" != "$expect" ]]; then echo "EXPECT FAIL want=$expect got=$code"; return 1; fi
+  [[ -n "$expect" ]] && echo "EXPECT OK $code"
+  return 0
+}
+
+cmd_last() {
+  load_state
+  local out; out="$(jq -er ".response.body | ${1:-.}" "$RUN_DIR/last.json" 2>/dev/null)" || die "last filter=${1:-} is false, null or missing"
+  echo "$out"
+}
+
+cmd_sql() {
+  local q="${1:?usage: sql \"<query>\"}"
+  load_state
+  local out; out="$(psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -d bgh -At -F '|' -v ON_ERROR_STOP=1 -c "$q" 2>&1)" || die "sql $out"
+  local seq; seq=$(( $(find "$EVIDENCE_DIR" -maxdepth 1 -name '*.json' | wc -l) + 1 ))
+  local file; file="$EVIDENCE_DIR/$(printf '%03d' "$seq")-sql.json"
+  jq -n --arg q "$q" --arg o "$out" --arg at "$(date -u +%FT%TZ)" '{at:$at, sql:$q, rows:($o|split("\n"))}' >"$file"
+  echo "EVIDENCE $file"
+  echo "$out"
+}
+
+cmd_down() {
+  [[ -f "$STATE" ]] || { echo "DOWN nothing-running evidence=$EVIDENCE_ROOT"; return 0; }
+  load_state
+  if server_alive; then kill "$SERVER_PID"; sleep 1; server_alive && kill -9 "$SERVER_PID"; fi
+  [[ -d "$RUN_DIR/pgdata" ]] && "$PG_BIN/pg_ctl" -D "$RUN_DIR/pgdata" -m fast -w stop >/dev/null 2>&1
+  [[ -d "${EVIDENCE_DIR:-}" ]] && cp "$RUN_DIR/server.log" "$RUN_DIR/postgres.log" "$EVIDENCE_DIR/" 2>/dev/null
+  rm -rf "$RUN_DIR"
+  echo "DOWN ok evidence=$EVIDENCE_DIR"
+}
+
+case "${1:-}" in
+  up|doctor|token|call|last|sql|down) c="$1"; shift; "cmd_$c" "$@" ;;
+  *) echo "usage: control.sh up|doctor|token <role>|call [--expect CODE] [--header 'K: V'] <role|anon> <METHOD> <PATH> [JSON]|last [jq-path]|sql \"<query>\"|down"; exit 1 ;;
+esac
