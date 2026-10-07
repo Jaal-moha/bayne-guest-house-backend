@@ -65,6 +65,21 @@ describe('Attendance auth', () => {
     }
   });
 
+  it('gives reception only the list and delete the attendance page uses', async () => {
+    const auth = bearer('reception');
+    await http()
+      .post('/attendance')
+      .set('Authorization', auth)
+      .send({ staffId: 1 })
+      .expect(403);
+    await http().get('/attendance/1').set('Authorization', auth).expect(403);
+    await http()
+      .patch('/attendance/1')
+      .set('Authorization', auth)
+      .send({})
+      .expect(403);
+  });
+
   it('rejects a scan with an unsigned token', async () => {
     const payload = Buffer.from(JSON.stringify({ role: 'admin' })).toString(
       'base64url',

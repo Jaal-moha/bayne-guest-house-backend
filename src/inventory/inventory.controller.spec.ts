@@ -63,4 +63,15 @@ describe('InventoryController auth', () => {
         .expect(200);
     },
   );
+
+  it.each(['barista', 'reception'])(
+    'stops %s from overwriting a quantity outside the movement log',
+    async (role) => {
+      await request(app.getHttpServer())
+        .patch('/inventory/1')
+        .set('Authorization', tokenFor(role))
+        .send({ quantity: 99 })
+        .expect(403);
+    },
+  );
 });
