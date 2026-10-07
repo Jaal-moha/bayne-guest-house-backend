@@ -200,4 +200,22 @@ describe('Payments and laundry HTTP bodies', () => {
     await request(app.getHttpServer()).post('/laundry').send({}).expect(401);
     await send('/laundry', 'post', {}, 'finance').expect(403);
   });
+
+  it.each(['', ' ', null])(
+    'treats a blank amount %j as missing so the service computes it',
+    async (amount) => {
+      await send(
+        '/payments',
+        'post',
+        { bookingId: 1, method: 'cash', amount },
+        'reception',
+      ).expect(201);
+      expect(payments.create.mock.calls[0][0].amount).toBeUndefined();
+    },
+  );
+
+  it('does not overwrite an amount with a blank PATCH value', async () => {
+    await send('/payments/1', 'patch', { amount: '' }, 'finance').expect(200);
+    expect(payments.update.mock.calls[0][1].amount).toBeUndefined();
+  });
 });
