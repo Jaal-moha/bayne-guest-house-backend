@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { nights } from '../bookings/nights';
 
-type SeriesPoint = { date: string; revenue: number; checkIns: number };
+type SeriesPoint = { date: string; revenue: Prisma.Decimal; checkIns: number };
 
 @Injectable()
 export class StatsService {
@@ -118,12 +119,10 @@ export class StatsService {
       unpaidBookingsPromise,
     ]);
 
-    let unpaidTotal = 0;
-    for (const b of unpaidBookings) {
-      const n = nights(b.checkIn, b.checkOut);
-      const price = b.room?.price ?? 0;
-      unpaidTotal += n * price;
-    }
+    const unpaidTotal = unpaidBookings.reduce(
+      (sum, b) => sum.add(b.room.price.mul(nights(b.checkIn, b.checkOut))),
+      new Prisma.Decimal(0),
+    );
 
     // return fields: when lifetime, set a lifetime flag and use generic arrivals/departures names;
     // when a specific range is provided, preserve previous today-compatibility naming.
@@ -136,7 +135,7 @@ export class StatsService {
       staff: staffCount,
       inventory: inventoryCount,
       laundry: laundryCount,
-      revenue: paidAgg._sum.amount ?? 0,
+      revenue: paidAgg._sum.amount ?? new Prisma.Decimal(0),
 
       occupiedRoomsNow: occupiedRoomsAtEnd,
       occupancyRate,
@@ -173,7 +172,7 @@ export class StatsService {
 
       out.push({
         date: dayStart.toISOString().slice(0, 10),
-        revenue: revAgg._sum.amount ?? 0,
+        revenue: revAgg._sum.amount ?? new Prisma.Decimal(0),
         checkIns,
       });
     }
