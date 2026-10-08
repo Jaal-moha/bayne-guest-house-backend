@@ -26,7 +26,7 @@ It installs deps if `node_modules` is missing, runs `prisma generate`, starts a 
 
 `doctor` prints `STALE build-rev` when the running build is older than the working tree, and the next `up` rebuilds. The database is recreated with it, so re-run the recipe's setup steps.
 
-Parallel instances need `VERIFY_ID=<name>` on every command and a worktree each. Each id gets its own ports, database, run dir and evidence dir, but `up` builds into the checkout's shared `dist/` and Prisma client, so two ids in one checkout rebuild under each other. Never drive an instance whose `up` you didn't run.
+Parallel instances need `VERIFY_ID=<name>` on every command and a worktree each, with its own `node_modules` (`up` installs it when it is missing; a symlink to another checkout's `node_modules` shares the generated Prisma client). Each id gets its own ports, database, run dir and evidence dir, but `up` builds into the checkout's shared `dist/` and Prisma client, so two ids in one checkout rebuild under each other. Never drive an instance whose `up` you didn't run.
 
 ## Doctor
 
