@@ -41,4 +41,24 @@ describe('AttendanceService manual rows', () => {
       }),
     ).rejects.toThrow(ConflictException);
   });
+
+  it('puts an evening UTC time on the next Addis day', async () => {
+    await service.create({
+      staffId: 4,
+      date: '2026-10-08T21:00:00Z',
+      checkIn: '2026-10-08T21:30:00Z',
+    });
+    expect(prisma.attendance.create.mock.calls[0][0].data.date).toEqual(
+      new Date('2026-10-08T21:00:00.000Z'),
+    );
+  });
+
+  it('reports a move onto a taken staff day as a conflict', async () => {
+    prisma.attendance.update.mockRejectedValueOnce(
+      Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }),
+    );
+    await expect(service.update(1, { date: '2026-10-08' })).rejects.toThrow(
+      ConflictException,
+    );
+  });
 });
