@@ -6,12 +6,13 @@ import { StaffService } from './staff.service';
 jest.mock('pdfkit', () => jest.fn());
 jest.mock('bwip-js', () => ({ toBuffer: jest.fn() }));
 
-const duplicateEmail = () =>
+const uniqueViolation = (field: string) =>
   new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
     code: 'P2002',
     clientVersion: 'test',
-    meta: { target: ['email'] },
+    meta: { target: [field] },
   });
+const duplicateEmail = () => uniqueViolation('email');
 
 describe('StaffService writes', () => {
   const staff = { id: 7, name: 'Dawit', role: 'security', barcode: 'EMP-000001', user: null };
@@ -71,5 +72,13 @@ describe('StaffService writes', () => {
     expect(tx.user.delete).toHaveBeenCalledWith({ where: { id: 2 } });
     expect(tx.staff.delete).toHaveBeenCalledWith({ where: { id: 7 } });
     expect(prisma.staff.delete).not.toHaveBeenCalled();
+  });
+
+  it('does not report a barcode collision as a taken email', async () => {
+    const { tx, service } = make();
+    tx.staff.create.mockRejectedValue(uniqueViolation('barcode'));
+    const created = service.create({ name: 'Dawit', role: 'security', phone: '0911' });
+    await expect(created).rejects.toThrow(Prisma.PrismaClientKnownRequestError);
+    await expect(created).rejects.not.toThrow(ConflictException);
   });
 });
