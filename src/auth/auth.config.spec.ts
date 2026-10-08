@@ -3,9 +3,9 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 
 describe('AuthModule config', () => {
-  it('signs and verifies with a JWT_SECRET that only the env file provides', async () => {
+  it('signs with a secret only the env file sets, and a blank expiry means 7 days', async () => {
     const envFile = join(mkdtempSync(join(tmpdir(), 'auth-config-')), '.env');
-    writeFileSync(envFile, 'JWT_SECRET=from-env-file\n');
+    writeFileSync(envFile, 'JWT_SECRET=from-env-file\nJWT_EXPIRES_IN=\n');
     delete process.env.JWT_SECRET;
     jest.resetModules();
 
@@ -27,12 +27,9 @@ describe('AuthModule config', () => {
       .useValue({})
       .compile();
 
-    const jwt = moduleRef.get(JwtService);
-    const token = jwt.sign({ sub: 1, role: 'admin' });
-    expect(
-      new (require('@nestjs/jwt').JwtService)({
-        secret: 'from-env-file',
-      }).verify(token).sub,
-    ).toBe(1);
+    const token = moduleRef.get(JwtService).sign({ sub: 1, role: 'admin' });
+    const claims = new JwtService({ secret: 'from-env-file' }).verify(token);
+    expect(claims.sub).toBe(1);
+    expect(claims.exp - claims.iat).toBe(7 * 24 * 60 * 60);
   });
 });
