@@ -21,7 +21,11 @@ export class StaffService {
     try {
       return await work();
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002' &&
+        [err.meta?.target].flat().some((t) => String(t).includes('email'))
+      ) {
         throw new ConflictException('User with that username/email already exists');
       }
       throw err;
