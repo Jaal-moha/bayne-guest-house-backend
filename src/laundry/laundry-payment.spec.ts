@@ -21,11 +21,11 @@ describe('laundry payment ownership', () => {
     };
   };
 
-  it('moves the unrefunded payment amount with a laundry price change, in the same transaction', async () => {
+  it('keeps the payment amount equal to the price whatever its status, in the same transaction', async () => {
     const { tx, service } = laundryTx();
     await service.update(1, { price: 200 });
     expect(tx.payment.updateMany).toHaveBeenCalledWith({
-      where: { laundryId: 1, status: { not: 'refunded' } },
+      where: { laundryId: 1 },
       data: { amount: 200 },
     });
   });
@@ -82,9 +82,11 @@ describe('laundry payment ownership', () => {
       expect(prisma.payment.update).toHaveBeenCalled();
     });
 
-    it('accepts an unchanged amount, as a full-form edit sends', async () => {
+    it('accepts an unchanged amount but never writes it, so a concurrent price change wins', async () => {
       await payments.update(7, { amount: 120, status: 'refunded' });
-      expect(prisma.payment.update).toHaveBeenCalled();
+      expect(prisma.payment.update.mock.calls[0][0].data).toEqual({
+        status: 'refunded',
+      });
     });
 
     it('still lets a dining payment change amount and be deleted', async () => {
