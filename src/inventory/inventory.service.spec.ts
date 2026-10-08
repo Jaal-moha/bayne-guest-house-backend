@@ -70,7 +70,7 @@ describe('InventoryService reads', () => {
   const prisma = {
     inventory: {
       findMany: jest.fn().mockResolvedValue([]),
-      findUnique: jest.fn().mockResolvedValue({ id: 3 }),
+      findFirst: jest.fn().mockResolvedValue({ id: 3 }),
     },
     inventoryMovement: { findMany: jest.fn().mockResolvedValue([]) },
     $queryRaw: jest.fn().mockResolvedValue([{ id: 7 }]),
