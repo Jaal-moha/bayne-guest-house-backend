@@ -32,7 +32,7 @@ Preconditions:
 
 ## Gotchas
 
-- `POST /payments` and `POST /laundry` take an untyped body, so the global ValidationPipe never runs on them. An invalid `method` such as `"bitcoin"` is accepted and stored. Don't treat a 201 there as proof that validation works.
-- `POST /payments` with `serviceType: LAUNDRY` always returns 400 `Payment already exists`, because `POST /laundry` already created the payment.
-- Changing a laundry order's `price` doesn't update its payment amount. Check both rows with `$S sql`.
-- `/stats/overview` counts nights with `ceil`, so its `unpaidTotal` can disagree with what `POST /payments` charges.
+- Bodies are validated and transformed, so numeric strings arrive as numbers and a blank amount counts as missing. An unknown `method` or `status` gets 400.
+- `POST /payments` with `serviceType: LAUNDRY` always returns 400, because `POST /laundry` already created the payment. PR #9 makes that 400 explicit.
+- Until PR #9 merges, changing a laundry order's `price` doesn't update its payment amount. Check both rows with `$S sql`.
+- `/stats/overview` counts nights with `ceil`, so its `unpaidTotal` can disagree with what `POST /payments` charges. Issue #17 tracks this.

@@ -30,7 +30,8 @@ Preconditions:
 
 ## Gotchas
 
-- The scan route never verifies the JWT signature. It base64-decodes the payload, so a forged token with `"role":"admin"` is accepted. A 201 from a JWT scan doesn't prove auth works.
-- `/attendance` CRUD and all of `/inventory` have no guards. `anon` gets 200 or 201 there.
+- The scan verifies the JWT signature and accepts the token with or without `Bearer`. A forged token gets 401.
+- `/attendance` records need a JWT. Admin and manager get every route, and reception gets only the list and delete.
+- Concurrent first scans leave one row, because `(staffId, date)` is unique. To check a race, fire the scans with `curl ... &` against the `base` from `up` and count rows with `$S sql`.
 - The day boundary is midnight UTC+3, which is 21:00 UTC. A run that crosses it creates a second row.
 - The `x-api-key` value is the instance's `ATTENDANCE_API_KEY`, which `up` sets to `verify-attendance-key`.
