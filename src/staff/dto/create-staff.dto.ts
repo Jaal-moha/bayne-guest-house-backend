@@ -1,8 +1,5 @@
-import { IsIn, IsOptional, IsString, MinLength, IsEmail, IsBoolean } from 'class-validator';
-
-export const ROLE_VALUES = [
-  'admin','manager','reception','housekeeping','barista','security','finance','store',
-] as const;
+import { Role } from '@prisma/client';
+import { IsEnum, IsOptional, IsString, MinLength, IsEmail, IsBoolean } from 'class-validator';
 
 export class CreateStaffDto {
   @IsString()
@@ -10,8 +7,8 @@ export class CreateStaffDto {
   name: string;
 
   @IsString()
-  @IsIn(ROLE_VALUES)
-  role: string;
+  @IsEnum(Role)
+  role: Role;
 
   @IsString()
   @MinLength(7)
