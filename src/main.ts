@@ -1,6 +1,7 @@
 import { validationPipeOptions } from './validation';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
+import { envValue } from './env';
 import { AppModule } from './app.module'; import { ValidationPipe } from '@nestjs/common';
 
 
@@ -13,7 +14,7 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization'],
     origin: [
       'http://localhost:3001', // frontend address
-      ...(JSON.parse(configService.get('ALLOWED_ORIGINS') ?? '[]') ?? []),
+      ...(JSON.parse(envValue(configService, 'ALLOWED_ORIGINS') ?? '[]') ?? []),
     ],
     credentials: true,
   });
@@ -21,8 +22,7 @@ async function bootstrap() {
 
 
 
-  // Force default to 3001 if PORT is not set
-  const port = process.env.PORT || 3000;
+  const port = envValue(configService, 'PORT') ?? 3000;
   await app.listen(port);
   console.log(`Backend running at http://localhost:${port}`);
 }

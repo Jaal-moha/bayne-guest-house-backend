@@ -3,6 +3,7 @@ import { JwtModule, JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy';
 import { InventoryController } from './inventory.controller';
 import { InventoryService } from './inventory.service';
@@ -23,6 +24,7 @@ describe('InventoryController auth', () => {
       controllers: [InventoryController],
       providers: [
         JwtStrategy,
+        ConfigService,
         {
           provide: InventoryService,
           useValue: {
