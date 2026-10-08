@@ -26,7 +26,8 @@ free_port() { node -e 'const s=require("net").createServer();s.listen(0,"127.0.0
 
 server_alive() {
   [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null &&
-    tr '\0' ' ' <"/proc/$SERVER_PID/cmdline" 2>/dev/null | grep -q "dist/src/main"
+    tr '\0' ' ' <"/proc/$SERVER_PID/cmdline" 2>/dev/null | grep -q "dist/src/main" &&
+    [[ "$(readlink "/proc/$SERVER_PID/cwd" 2>/dev/null)" == "$ROOT" ]]
 }
 
 http() {
@@ -56,6 +57,10 @@ cmd_up() {
   fi
   local pg_port app_port
   pg_port="$(free_port)"; app_port="$(free_port)"
+  if [[ -d "$RUN_DIR/pgdata" ]]; then
+    "$PG_BIN/pg_ctl" -D "$RUN_DIR/pgdata" -m fast stop >>"$log" 2>&1 || true
+    rm -rf "$RUN_DIR/pgdata"
+  fi
   "$PG_BIN/initdb" -D "$RUN_DIR/pgdata" -U postgres --auth=trust >>"$log" 2>&1 || die "initdb log=$log"
   "$PG_BIN/pg_ctl" -D "$RUN_DIR/pgdata" -l "$RUN_DIR/postgres.log" -w -t 60 \
     -o "-p $pg_port -c listen_addresses=127.0.0.1 -c unix_socket_directories=''" start >>"$log" 2>&1 || die "postgres-start log=$RUN_DIR/postgres.log"

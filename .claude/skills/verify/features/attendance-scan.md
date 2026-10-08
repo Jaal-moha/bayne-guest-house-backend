@@ -30,7 +30,7 @@ Preconditions:
 
 ## Gotchas
 
-- The scan verifies the JWT signature and accepts the token with or without `Bearer`. A forged token gets 401.
+- The scan verifies the JWT signature and accepts the token with or without `Bearer`. A forged token gets 401. Any validly signed token passes, whatever its role.
 - `/attendance` records need a JWT. Admin and manager get every route, and reception gets only the list and delete.
 - Concurrent first scans leave one row, because `(staffId, date)` is unique. To check a race, fire the scans with `curl ... &` against the `base` from `up` and count rows with `$S sql`.
 - The day boundary is midnight UTC+3, which is 21:00 UTC. A run that crosses it creates a second row.
