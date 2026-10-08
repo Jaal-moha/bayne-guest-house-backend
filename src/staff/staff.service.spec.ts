@@ -3,9 +3,6 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StaffService } from './staff.service';
 
-jest.mock('pdfkit', () => jest.fn());
-jest.mock('bwip-js', () => ({ toBuffer: jest.fn() }));
-
 const uniqueViolation = (field: string) =>
   new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
     code: 'P2002',
