@@ -18,7 +18,7 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization'],
     origin: [
       'http://localhost:3001', // frontend address
-      ...JSON.parse(envValue(configService, 'ALLOWED_ORIGINS') ?? '[]'),
+      ...(JSON.parse(envValue(configService, 'ALLOWED_ORIGINS') ?? '[]') ?? []),
     ],
     credentials: true,
   });
