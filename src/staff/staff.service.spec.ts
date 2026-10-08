@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StaffService } from './staff.service';
@@ -71,11 +71,24 @@ describe('StaffService writes', () => {
     expect(prisma.staff.delete).not.toHaveBeenCalled();
   });
 
-  it('does not report a barcode collision as a taken email', async () => {
-    const { tx, service } = make();
-    tx.staff.create.mockRejectedValue(uniqueViolation('barcode'));
-    const created = service.create({ name: 'Dawit', role: 'security', phone: '0911' });
-    await expect(created).rejects.toThrow(Prisma.PrismaClientKnownRequestError);
-    await expect(created).rejects.not.toThrow(ConflictException);
+  describe('barcode collisions', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    it('retries the whole transaction with a fresh barcode', async () => {
+      const { tx, prisma, service } = make();
+      jest.spyOn(Math, 'random').mockReturnValueOnce(0.5).mockReturnValueOnce(0.25);
+      tx.staff.create.mockRejectedValueOnce(uniqueViolation('barcode'));
+      await expect(service.create({ name: 'Dawit', role: 'security', phone: '0911' })).resolves.toMatchObject({ id: 7 });
+      expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+      expect(tx.staff.create.mock.calls.map(([arg]) => arg.data.barcode)).toEqual(['EMP-550000', 'EMP-325000']);
+    });
+
+    it('gives up after bounded attempts with a 503, not a taken-email 409', async () => {
+      const { tx, prisma, service } = make();
+      tx.staff.create.mockRejectedValue(uniqueViolation('barcode'));
+      const created = service.create({ name: 'Dawit', role: 'security', phone: '0911' });
+      await expect(created).rejects.toThrow(ServiceUnavailableException);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(5);
+    });
   });
 });
