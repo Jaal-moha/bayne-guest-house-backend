@@ -72,6 +72,7 @@ describe('InventoryService reads', () => {
       findUnique: jest.fn().mockResolvedValue({ id: 3 }),
     },
     inventoryMovement: { findMany: jest.fn().mockResolvedValue([]) },
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 7 }]),
   };
   const service = new InventoryService(prisma as unknown as PrismaService);
 
@@ -82,15 +83,24 @@ describe('InventoryService reads', () => {
     });
   });
 
-  it('matches a numeric search against the exact quantity', async () => {
+  it('matches a numeric search as a substring of the quantity, like the old filter', async () => {
     await service.findAll({ q: '12' });
-    const or = prisma.inventory.findMany.mock.calls[0][0].where.AND[0].OR;
-    expect(or).toContainEqual({ quantity: 12 });
+    const [sql, ...values] = prisma.$queryRaw.mock.calls.at(-1);
+    expect(sql.join('?')).toMatch(/quantity.*::text LIKE/i);
+    expect(values).toEqual(['%12%']);
+    const or = prisma.inventory.findMany.mock.calls.at(-1)[0].where.AND[0].OR;
+    expect(or).toContainEqual({ id: { in: [7] } });
   });
 
-  it('adds no quantity clause for a number the column cannot hold', async () => {
+  it('searches a barcode longer than int32 without a numeric quantity clause', async () => {
     await service.findAll({ q: '4006381333931' });
     const where = prisma.inventory.findMany.mock.calls.at(-1)[0].where;
-    expect(JSON.stringify(where)).not.toContain('quantity');
+    expect(JSON.stringify(where)).not.toContain('"quantity"');
+  });
+
+  it('skips the quantity lookup for a search with letters', async () => {
+    prisma.$queryRaw.mockClear();
+    await service.findAll({ q: 'soap' });
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 });
