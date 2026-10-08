@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AttendanceService } from './attendance.service';
 
@@ -60,5 +60,26 @@ describe('AttendanceService manual rows', () => {
     await expect(service.update(1, { date: '2026-10-08' })).rejects.toThrow(
       ConflictException,
     );
+  });
+
+  it('rejects a null date on update instead of moving the row to 1969', async () => {
+    await expect(service.update(1, { date: null as never })).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.attendance.update).not.toHaveBeenCalled();
+  });
+
+  it('stores a date-only check-in on update as a date', async () => {
+    await service.update(1, { checkIn: '2026-10-08' });
+    expect(prisma.attendance.update.mock.calls[0][0].data.checkIn).toEqual(
+      new Date('2026-10-08T00:00:00.000Z'),
+    );
+  });
+
+  it('rejects a date the parser cannot read', async () => {
+    await expect(service.update(1, { checkIn: '2026-W41-3' })).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.attendance.update).not.toHaveBeenCalled();
   });
 });
