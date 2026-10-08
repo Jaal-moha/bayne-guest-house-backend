@@ -23,7 +23,7 @@ Preconditions:
 - The baseline from the README holds.
 
 - **Room and guest.** Run `$S call --expect 201 admin POST /rooms '{"number":"101","type":"double","price":1500}'` and `ROOM=$($S last .id)`. Then run `$S call --expect 201 reception POST /guests '{"name":"Abebe Kebede","phone":"0911223344"}'` and `GUEST=$($S last .id)`.
-- **Book.** Run `$S call --expect 201 reception POST /bookings "{\"guestId\":$GUEST,\"roomId\":$ROOM,\"checkIn\":\"2026-11-01T12:00:00Z\",\"checkOut\":\"2026-11-03T10:00:00Z\"}"` and `BOOKING=$($S last .id)`. `$S last .payment` prints `null`.
+- **Book.** Run `$S call --expect 201 reception POST /bookings "{\"guestId\":$GUEST,\"roomId\":$ROOM,\"checkIn\":\"2026-11-01T12:00:00Z\",\"checkOut\":\"2026-11-03T10:00:00Z\"}"` and `BOOKING=$($S last .id)`. `$S last '.payment == null'` prints `true`.
 - **Overlap refused.** Run the same call with `checkIn` `2026-11-02T12:00:00Z` and `checkOut` `2026-11-04T10:00:00Z` and `--expect 400`.
 - **Back-to-back allowed.** Run the same call with `checkIn` `2026-11-03T10:00:00Z` and `checkOut` `2026-11-05T10:00:00Z` and `--expect 201`. The checks use strict `<` and `>`, so ranges that only touch don't overlap.
 - **Unpaid list.** Run `$S call --expect 200 finance GET "/bookings?unpaid=true"`. `$S last "any(.[]; .id == $BOOKING)"` prints `true`.

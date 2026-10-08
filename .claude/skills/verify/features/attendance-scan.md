@@ -7,7 +7,7 @@ A scanner at the door reads a staff member's barcode. The first scan of the Addi
 - `scan-checkin` creates the day's attendance row with `checkIn=now`.
 - `scan-checkout` sets `checkOut=now` on that row.
 - `scan-done` returns `ALREADY_CHECKED_OUT` without changing the row.
-- `scan-auth` accepts an `x-api-key` header or a bearer JWT with a staff role, and returns 401 without either.
+- `scan-auth` accepts an `x-api-key` header or a validly signed bearer JWT, whatever its role, and returns 401 without either.
 - `scan-prefix` strips `ATT:` and `STAFF-` prefixes from scanned codes.
 
 ## How to get to it (user POV)

@@ -33,6 +33,6 @@ Preconditions:
 ## Gotchas
 
 - Bodies are validated and transformed, so numeric strings arrive as numbers and a blank amount counts as missing. An unknown `method` or `status` gets 400.
-- `POST /payments` with `serviceType: LAUNDRY` returns 400 while the order's payment exists, because `POST /laundry` created it. After `DELETE /payments/:id` removes that payment, it returns 201. PR #9 rejects both.
-- Until PR #9 merges, changing a laundry order's `price` doesn't update its payment amount. Check both rows with `$S sql`.
+- `POST /payments` with `serviceType: LAUNDRY` returns 400 while the order's payment exists, because `POST /laundry` created it. After `DELETE /payments/:id` removes that payment, it returns 201.
+- Changing a laundry order's `price` doesn't update its payment amount. Check both rows with `$S sql`.
 - `/stats/overview` counts nights with `ceil`, so its `unpaidTotal` can disagree with what `POST /payments` charges. Issue #17 tracks this.

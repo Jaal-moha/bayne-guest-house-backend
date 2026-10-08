@@ -24,6 +24,16 @@ load_state() {
 
 free_port() { node -e 'const s=require("net").createServer();s.listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})'; }
 
+# Short HEAD, plus a hash of every change under src and prisma, untracked files included.
+tree_rev() {
+  local head changes
+  head="$(git -C "$ROOT" rev-parse --short HEAD)"
+  changes="$( { git -C "$ROOT" diff HEAD -- src prisma; git -C "$ROOT" ls-files -o --exclude-standard -z -- src prisma | xargs -0 -r cat; } | sha1sum | cut -c1-8)"
+  if [[ "$changes" == "$(printf '' | sha1sum | cut -c1-8)" ]]; then echo "$head"; else echo "$head-dirty-$changes"; fi
+}
+
+ready_line() { echo "READY base=$BASE_URL id=$ID rev=$GIT_REV evidence=$EVIDENCE_DIR"; }
+
 server_alive() {
   [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null &&
     tr '\0' ' ' <"/proc/$SERVER_PID/cmdline" 2>/dev/null | grep -q "dist/src/main" &&
@@ -32,7 +42,8 @@ server_alive() {
 
 http() {
   local method="$1" path="$2" token="$3" body="${4:-}"
-  local args=(-s -o "$RUN_DIR/last.body" -w '%{http_code}' -X "$method" "$BASE_URL$path")
+  rm -f "$RUN_DIR/last.body"
+  local args=(-s --max-time 30 -o "$RUN_DIR/last.body" -w '%{http_code}' -X "$method" "$BASE_URL$path")
   [[ -n "$token" ]] && args+=(-H "Authorization: Bearer $token")
   local h; for h in "${EXTRA_HEADERS[@]}"; do args+=(-H "$h"); done
   [[ -n "$body" ]] && args+=(-H 'Content-Type: application/json' --data "$body")
@@ -41,7 +52,7 @@ http() {
 
 cmd_up() {
   if [[ -f "$STATE" ]]; then
-    if cmd_doctor >/dev/null; then load_state; echo "READY base=$BASE_URL id=$ID"; return 0; fi
+    if cmd_doctor >/dev/null; then load_state; ready_line; return 0; fi
     cmd_down >/dev/null
   fi
   local evidence="$EVIDENCE_ROOT/$(date -u +%Y%m%dT%H%M%SZ)"
@@ -74,7 +85,7 @@ APP_PORT=$app_port
 BASE_URL=http://127.0.0.1:$app_port
 JWT_SECRET=verify-jwt-secret
 ATTENDANCE_API_KEY=verify-attendance-key
-GIT_REV=$(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet HEAD -- src prisma || echo -dirty)
+GIT_REV=$(tree_rev)
 EOF
 
   local i
@@ -94,7 +105,7 @@ EOF
     sleep 1
   done
   [[ "$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/health")" == 200 ]] || die "health-timeout log=$RUN_DIR/server.log"
-  echo "READY base=$BASE_URL id=$ID rev=$GIT_REV evidence=$EVIDENCE_DIR"
+  ready_line
 }
 
 cmd_doctor() {
@@ -107,7 +118,7 @@ cmd_doctor() {
   check port-owner "ss -ltnpH 'sport = :$APP_PORT' | grep -q 'pid=$SERVER_PID,'"
   check health "[[ \$(curl -s $BASE_URL/health | jq -r .ok) == true ]]"
   check admin-login "[[ \$(http POST /auth/login '' '{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}') == 201 ]]"
-  local head; head="$(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet HEAD -- src prisma || echo -dirty)"
+  local head; head="$(tree_rev)"
   if [[ "$head" == "$GIT_REV" ]]; then echo "OK build-rev $GIT_REV"; else echo "STALE build-rev built=$GIT_REV now=$head (run down then up to rebuild)"; fi
   if (( fails == 0 )); then echo "DOCTOR PASS base=$BASE_URL"; else echo "DOCTOR FAIL"; return 1; fi
 }
@@ -120,7 +131,7 @@ cmd_token() {
   local email="$ADMIN_EMAIL" password="$ADMIN_PASSWORD"
   if [[ "$role" != admin ]]; then
     email="verify-$role@example.com"; password="verify-pass-$role"
-    local admin; admin="$(cmd_token admin)" || exit 1
+    local admin; admin="$(cmd_token admin)" || { echo "$admin"; exit 1; }
     local code; code="$(http POST /staff "$admin" "$(jq -nc --arg r "$role" --arg e "$email" --arg p "$password" \
       '{name:("Verify "+$r), role:$r, phone:"0911000000", username:$e, password:$p, forceChangePassword:false}')")"
     [[ "$code" == 201 ]] || die "create-staff role=$role http=$code body=$(cat "$RUN_DIR/last.body")"
@@ -146,6 +157,7 @@ cmd_call() {
   local token=""
   [[ "$who" != anon ]] && { token="$(cmd_token "$who")" || { echo "$token"; exit 1; }; }
   local code; code="$(http "$method" "$path" "$token" "$body")"
+  [[ "$code" == 000 ]] && die "http-unreachable base=$BASE_URL (run 'control.sh doctor')"
   local seq; seq=$(( $(find "$EVIDENCE_DIR" -maxdepth 1 -name '*.json' | wc -l) + 1 ))
   local file; file="$EVIDENCE_DIR/$(printf '%03d' "$seq")-$who-$method-$(echo "$path" | tr -c 'a-zA-Z0-9\n' '_' | cut -c2-60).json"
   local resp
@@ -181,13 +193,17 @@ cmd_sql() {
 }
 
 cmd_down() {
-  [[ -f "$STATE" ]] || { echo "DOWN nothing-running evidence=$EVIDENCE_ROOT"; return 0; }
-  load_state
+  [[ -d "$RUN_DIR" ]] || { echo "DOWN nothing-running evidence=$EVIDENCE_ROOT"; return 0; }
+  [[ -f "$STATE" ]] && source "$STATE"
   if server_alive; then kill "$SERVER_PID"; sleep 1; server_alive && kill -9 "$SERVER_PID"; fi
-  [[ -d "$RUN_DIR/pgdata" ]] && "$PG_BIN/pg_ctl" -D "$RUN_DIR/pgdata" -m fast -w stop >/dev/null 2>&1
+  server_alive && die "server-stop pid=$SERVER_PID run=$RUN_DIR"
+  if [[ -d "$RUN_DIR/pgdata" ]]; then
+    "$PG_BIN/pg_ctl" -D "$RUN_DIR/pgdata" -m fast -w stop >/dev/null 2>&1
+    "$PG_BIN/pg_ctl" -D "$RUN_DIR/pgdata" status >/dev/null 2>&1 && die "postgres-stop run=$RUN_DIR"
+  fi
   [[ -d "${EVIDENCE_DIR:-}" ]] && cp "$RUN_DIR/server.log" "$RUN_DIR/postgres.log" "$EVIDENCE_DIR/" 2>/dev/null
   rm -rf "$RUN_DIR"
-  echo "DOWN ok evidence=$EVIDENCE_DIR"
+  echo "DOWN ok evidence=${EVIDENCE_DIR:-$EVIDENCE_ROOT}"
 }
 
 case "${1:-}" in
