@@ -6,7 +6,6 @@ export class CreateStaffDto {
   @MinLength(2)
   name: string;
 
-  @IsString()
   @IsEnum(Role)
   role: Role;
 
