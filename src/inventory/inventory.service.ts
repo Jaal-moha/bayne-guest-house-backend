@@ -36,6 +36,7 @@ export class InventoryService {
                 { name: { contains: q, mode: 'insensitive' } },
                 { category: { contains: q, mode: 'insensitive' } },
                 { sku: { contains: q, mode: 'insensitive' } },
+                ...(/^\d+$/.test(q) ? [{ quantity: Number(q) }] : []),
               ],
             }
           : undefined,
@@ -84,8 +85,9 @@ export class InventoryService {
       throw new BadRequestException('Quantity must be a positive number');
     }
     return this.prisma.$transaction(async (tx) => {
-      if (!(await tx.inventory.findUnique({ where: { id } }))) throw new NotFoundException('Item not found');
-      const updated = await tx.inventory.update({ where: { id }, data: { quantity: { increment: quantity } } });
+      const { count } = await tx.inventory.updateMany({ where: { id }, data: { quantity: { increment: quantity } } });
+      if (count === 0) throw new NotFoundException('Item not found');
+      const updated = await tx.inventory.findUniqueOrThrow({ where: { id } });
 
       await tx.inventoryMovement.create({
         data: {
@@ -161,7 +163,7 @@ export class InventoryService {
 
     return this.prisma.inventoryMovement.findMany({
       where: { inventoryId: id },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { id: 'desc' },
       take: Math.max(1, Math.min(500, limit)),
     });
   }
