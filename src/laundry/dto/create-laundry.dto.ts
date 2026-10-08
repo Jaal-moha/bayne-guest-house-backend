@@ -1,8 +1,10 @@
-import { IsInt, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ToOptionalNumber } from '../../validation';
+import { IsNumber, Min, IsInt, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export const LAUNDRY_STATUSES = ['pending', 'in_progress', 'done'] as const;
 
 export class CreateLaundryDto {
+  @ToOptionalNumber()
   @IsInt()
   guestId!: number;
 
@@ -13,4 +15,10 @@ export class CreateLaundryDto {
   @IsOptional()
   @IsIn(LAUNDRY_STATUSES as unknown as string[])
   status?: string; // default 'pending' if omitted
+
+  @IsOptional()
+  @ToOptionalNumber()
+  @IsNumber()
+  @Min(0)
+  price?: number;
 }

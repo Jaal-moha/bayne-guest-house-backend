@@ -33,19 +33,13 @@ export class LaundryController {
 
   @Post()
   @Roles('admin', 'housekeeping', 'reception', 'manager')
-  create(@Body() body: any) {
-    // Allow extra fields like price to pass through ValidationPipe
-    // Optionally coerce numeric fields if present
-    if (body && body.guestId) body.guestId = Number(body.guestId);
-    if (body && body.price !== undefined) body.price = Number(body.price);
+  create(@Body() body: CreateLaundryDto) {
     return this.laundry.create(body);
   }
 
   @Patch(':id')
   @Roles('admin', 'housekeeping', 'manager')
-  update(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
-    // Allow optional price updates
-    if (body && body.price !== undefined) body.price = Number(body.price);
+  update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateLaundryDto) {
     return this.laundry.update(id, body);
   }
 

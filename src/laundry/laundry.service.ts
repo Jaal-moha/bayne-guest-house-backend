@@ -19,12 +19,7 @@ export class LaundryService {
       ? dto.status as LaundryStatus
       : 'pending';
 
-    // Accept price from DTO (backward compatible)
-    const rawPrice = (dto as any).price;
-    const priceNum = rawPrice === undefined || rawPrice === null ? 0 : Number(rawPrice);
-    if (!Number.isFinite(priceNum) || priceNum < 0) {
-      throw new BadRequestException('Price must be a non-negative number');
-    }
+    const priceNum = dto.price ?? 0;
 
     // Transaction: create laundry and corresponding payment
     const result = await this.prisma.$transaction(async (tx) => {
@@ -110,11 +105,7 @@ export class LaundryService {
       ...(dto.items !== undefined ? { items: dto.items } : {}),
       ...(dto.status !== undefined ? { status: dto.status } : {}),
     };
-    if ((dto as any).price !== undefined) {
-      const p = Number((dto as any).price);
-      if (!Number.isFinite(p) || p < 0) throw new BadRequestException('Price must be a non-negative number');
-      patch.price = p;
-    }
+    if (dto.price !== undefined) patch.price = dto.price;
 
     return this.prisma.laundry.update({
       where: { id },

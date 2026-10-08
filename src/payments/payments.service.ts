@@ -14,9 +14,7 @@ export class PaymentsService {
   }
 
   async create(dto: CreatePaymentDto) {
-    const anyDto = dto as any;
-    const serviceTypeRaw: string | undefined = anyDto.serviceType;
-    const serviceType = (serviceTypeRaw || (dto.bookingId ? 'ROOM' : 'OTHER')).toUpperCase();
+    const serviceType = dto.serviceType ?? (dto.bookingId ? 'ROOM' : 'OTHER');
 
     if (serviceType === 'ROOM') {
       if (!dto.bookingId) throw new BadRequestException('bookingId is required for ROOM payments');
@@ -52,7 +50,7 @@ export class PaymentsService {
     }
 
     if (serviceType === 'LAUNDRY') {
-      const laundryId: number | undefined = anyDto.laundryId ? Number(anyDto.laundryId) : undefined;
+      const laundryId = dto.laundryId;
       if (!laundryId) throw new BadRequestException('laundryId is required for LAUNDRY payments');
 
       const laundry = await this.prisma.laundry.findUnique({
@@ -88,7 +86,7 @@ export class PaymentsService {
     if (!Number.isFinite(amount as number) || (amount as number) <= 0) {
       throw new BadRequestException('Amount is required for non-room payments');
     }
-    const guestId = (anyDto.guestId != null) ? Number(anyDto.guestId) : undefined;
+    const guestId = dto.guestId;
     if (!guestId) throw new BadRequestException('guestId is required for non-room payments');
     const guest = await this.prisma.guest.findUnique({ where: { id: guestId } });
     if (!guest) throw new NotFoundException('Guest not found');
