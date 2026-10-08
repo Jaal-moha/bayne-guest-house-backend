@@ -3,6 +3,7 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
 import request from 'supertest';
+import { AppModule } from '../app.module';
 import { DecimalToNumberInterceptor } from './decimal-to-number.interceptor';
 
 @Controller('money')
@@ -49,5 +50,12 @@ describe('Decimal fields over HTTP', () => {
   it('converts inside a top-level array', async () => {
     const res = await request(app.getHttpServer()).get('/money/list').expect(200);
     expect(res.body).toEqual([{ amount: 19.99 }]);
+  });
+
+  it('runs on every route of the app', () => {
+    expect(Reflect.getMetadata('providers', AppModule)).toContainEqual({
+      provide: APP_INTERCEPTOR,
+      useClass: DecimalToNumberInterceptor,
+    });
   });
 });

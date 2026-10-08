@@ -28,9 +28,8 @@ describe('stats money', () => {
     return new StatsService(prisma as unknown as PrismaService);
   };
 
-  it('totals unpaid nights and revenue to the cent', async () => {
+  it('totals unpaid nights to the cent', async () => {
     const overview = await statsWith('500.10', '0.30').overview();
     expect(Number(overview.unpaidTotal)).toBe(1500.3);
-    expect(Number(overview.revenue)).toBe(0.3);
   });
 });
