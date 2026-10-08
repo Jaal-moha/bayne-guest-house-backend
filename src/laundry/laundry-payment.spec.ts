@@ -62,7 +62,7 @@ describe('laundry payment ownership', () => {
       payment: {
         findUnique: jest
           .fn()
-          .mockResolvedValue({ id: 7, serviceType: 'LAUNDRY' }),
+          .mockResolvedValue({ id: 7, serviceType: 'LAUNDRY', amount: 120 }),
         update: jest.fn(),
         delete: jest.fn(),
       },
@@ -80,6 +80,28 @@ describe('laundry payment ownership', () => {
     it('can still change its status, for a refund', async () => {
       await payments.update(7, { status: 'refunded' });
       expect(prisma.payment.update).toHaveBeenCalled();
+    });
+
+    it('accepts an unchanged amount, as a full-form edit sends', async () => {
+      await payments.update(7, { amount: 120, status: 'refunded' });
+      expect(prisma.payment.update).toHaveBeenCalled();
+    });
+
+    it('still lets a dining payment change amount and be deleted', async () => {
+      prisma.payment.findUnique.mockResolvedValueOnce({
+        id: 8,
+        serviceType: 'DINING',
+        amount: 250,
+      });
+      prisma.payment.findUnique.mockResolvedValueOnce({
+        id: 8,
+        serviceType: 'DINING',
+        amount: 300,
+      });
+      await payments.update(8, { amount: 300 });
+      await payments.remove(8);
+      expect(prisma.payment.update).toHaveBeenCalled();
+      expect(prisma.payment.delete).toHaveBeenCalled();
     });
 
     it('cannot be deleted on its own', async () => {
