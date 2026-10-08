@@ -36,7 +36,7 @@ export class PaymentsService {
           guestId: booking.guestId, // ← strict guest link
           amount,
           method: dto.method,
-          status: dto.status ?? 'paid',
+          status: dto.status,
           description: dto.description ?? null,
           serviceType: 'ROOM' as any,
         },
@@ -68,7 +68,7 @@ export class PaymentsService {
         guestId, // ← strict guest link
         amount: amount as number,
         method: dto.method,
-        status: dto.status ?? 'paid',
+        status: dto.status,
         description: dto.description ?? null,
         serviceType: (serviceType === 'DINING' ? 'DINING' : 'OTHER') as any,
       },

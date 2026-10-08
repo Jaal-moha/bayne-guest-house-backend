@@ -1,6 +1,6 @@
 import { ToOptionalNumber } from '../../validation';
-import { IsIn, IsNumber, IsOptional, IsString, MaxLength } from 'class-validator';
-import { PAYMENT_METHODS, PAYMENT_STATUSES } from './create-payment.dto';
+import { PaymentMethod, PaymentStatus } from '@prisma/client';
+import { IsEnum, IsNumber, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdatePaymentDto {
   @IsOptional()
@@ -9,12 +9,12 @@ export class UpdatePaymentDto {
   amount?: number;
 
   @IsOptional()
-  @IsIn(PAYMENT_METHODS as unknown as string[])
-  method?: string;
+  @IsEnum(PaymentMethod)
+  method?: PaymentMethod;
 
   @IsOptional()
-  @IsIn(PAYMENT_STATUSES as unknown as string[])
-  status?: string;
+  @IsEnum(PaymentStatus)
+  status?: PaymentStatus;
 
   @IsOptional()
   @IsString()

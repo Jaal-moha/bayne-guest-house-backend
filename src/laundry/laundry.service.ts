@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { LaundryStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLaundryDto } from './dto/create-laundry.dto';
 import { UpdateLaundryDto } from './dto/update-laundry.dto';
 
-const ALLOWED_STATUSES = ['pending','in_progress','done'] as const;
-type LaundryStatus = typeof ALLOWED_STATUSES[number];
+const isLaundryStatus = (value: string): value is LaundryStatus =>
+  (Object.values(LaundryStatus) as string[]).includes(value);
 
 @Injectable()
 export class LaundryService {
@@ -15,10 +16,6 @@ export class LaundryService {
     const guest = await this.prisma.guest.findUnique({ where: { id: dto.guestId } });
     if (!guest) throw new NotFoundException('Guest not found');
 
-    const status: LaundryStatus = dto.status && ALLOWED_STATUSES.includes(dto.status as any)
-      ? dto.status as LaundryStatus
-      : 'pending';
-
     const priceNum = dto.price ?? 0;
 
     // Transaction: create laundry and corresponding payment
@@ -27,7 +24,7 @@ export class LaundryService {
         data: {
           guestId: dto.guestId,
           items: dto.items,
-          status,
+          status: dto.status,
           price: priceNum,
         },
         include: { guest: true },
@@ -54,7 +51,7 @@ export class LaundryService {
 
   /**
    * Optional filters:
-   *  - status: 'pending' | 'in_progress' | 'done'
+   *  - status: a LaundryStatus, anything else is ignored
    *  - q: search in items or guest name
    *  - guestId: number
    */
@@ -62,7 +59,7 @@ export class LaundryService {
     const { status, q, guestId } = params || {};
     const where: any = {};
 
-    if (status && ['pending', 'in_progress', 'done'].includes(status)) {
+    if (status && isLaundryStatus(status)) {
       where.status = status;
     }
     if (guestId) {
@@ -96,10 +93,6 @@ export class LaundryService {
     const existing = await this.prisma.laundry.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Laundry not found');
 
-    if (dto.status !== undefined && !ALLOWED_STATUSES.includes(dto.status as any)) {
-      throw new BadRequestException('Status must be one of: pending, in_progress, done');
-    }
-
     // Allow updating price if provided (optional)
     const patch: any = {
       ...(dto.items !== undefined ? { items: dto.items } : {}),
@@ -116,10 +109,7 @@ export class LaundryService {
     });
   }
 
-  async updateStatus(id: number, status: string) {
-    if (!ALLOWED_STATUSES.includes(status as any)) {
-      throw new BadRequestException('Status must be one of: pending, in_progress, done');
-    }
+  async updateStatus(id: number, status: LaundryStatus) {
     const existing = await this.prisma.laundry.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Laundry not found');
 

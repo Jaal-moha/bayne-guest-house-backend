@@ -1,7 +1,6 @@
 import { ToOptionalNumber } from '../../validation';
-import { IsNumber, Min, IsInt, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
-
-export const LAUNDRY_STATUSES = ['pending', 'in_progress', 'done'] as const;
+import { LaundryStatus } from '@prisma/client';
+import { IsNumber, Min, IsInt, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreateLaundryDto {
   @ToOptionalNumber()
@@ -13,8 +12,8 @@ export class CreateLaundryDto {
   items!: string; // e.g., "2x sheets, 3x towels"
 
   @IsOptional()
-  @IsIn(LAUNDRY_STATUSES as unknown as string[])
-  status?: string; // default 'pending' if omitted
+  @IsEnum(LaundryStatus)
+  status?: LaundryStatus; // default 'pending' if omitted
 
   @IsOptional()
   @ToOptionalNumber()
