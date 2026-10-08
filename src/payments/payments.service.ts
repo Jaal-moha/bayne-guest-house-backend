@@ -104,7 +104,15 @@ export class PaymentsService {
     return p;
   }
 
-  update(id: number, dto: UpdatePaymentDto) {
+  private async assertNotLaundry(id: number, action: string) {
+    const payment = await this.prisma.payment.findUnique({ where: { id } });
+    if (payment?.serviceType === 'LAUNDRY') {
+      throw new BadRequestException(`Laundry payments follow their order. ${action} the laundry order instead`);
+    }
+  }
+
+  async update(id: number, dto: UpdatePaymentDto) {
+    if (dto.amount !== undefined) await this.assertNotLaundry(id, 'Change the price on');
     return this.prisma.payment.update({
       where: { id },
       data: {
@@ -121,7 +129,8 @@ export class PaymentsService {
     });
   }
 
-  remove(id: number) {
+  async remove(id: number) {
+    await this.assertNotLaundry(id, 'Delete');
     return this.prisma.payment.delete({ where: { id } });
   }
 }
