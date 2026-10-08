@@ -7,6 +7,12 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy, jwtSecret } from './jwt.strategy';
 
+// jsonwebtoken reads a unitless string as milliseconds, so '3600' would expire in 3.6 seconds.
+function tokenLifetime(value?: string): string | number {
+  if (!value) return '7d';
+  return /^\d+$/.test(value) ? Number(value) : value;
+}
+
 @Module({
   imports: [
     UsersModule,
@@ -17,7 +23,7 @@ import { JwtStrategy, jwtSecret } from './jwt.strategy';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: jwtSecret(config),
-        signOptions: { expiresIn: config.get<string>('JWT_EXPIRES_IN') || '7d' },
+        signOptions: { expiresIn: tokenLifetime(config.get<string>('JWT_EXPIRES_IN')) },
       }),
     }),
   ],
