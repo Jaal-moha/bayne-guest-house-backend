@@ -2,7 +2,8 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInventoryDto } from './dto/create-inventory.dto';
 import { UpdateInventoryDto } from './dto/update-inventory.dto';
-import { Prisma, InventoryMoveType } from '@prisma/client';
+import { Prisma, Inventory, InventoryMoveType } from '@prisma/client';
+import { INT4_MAX } from '../validation';
 
 @Injectable()
 export class InventoryService {
@@ -21,33 +22,23 @@ export class InventoryService {
     return this.prisma.inventory.create({ data });
   }
 
-  // LIST with optional filters; low stock filter applied in memory for simplicity
+  // LIST with optional filters; low stock filter applied in memory for simplicity.
+  // One statement, so a large match set or a concurrent update can't split the search from its rows.
+  // Quantity matches as text, like the old in-memory filter the frontend relies on (q=12 finds 312).
   async findAll(params?: { q?: string; category?: string; low?: boolean }) {
-    const q = params?.q?.trim();
-    const category = params?.category?.trim();
-    const onlyLow = !!params?.low;
+    const q = params?.q?.trim() || null;
+    const category = params?.category?.trim() || null;
+    const pattern = q && `%${q.replace(/[\\%_]/g, '\\$&')}%`;
 
-    const where: Prisma.InventoryWhereInput = {
-      AND: [
-        category ? { category } : undefined,
-        q
-          ? {
-              OR: [
-                { name: { contains: q, mode: 'insensitive' } },
-                { category: { contains: q, mode: 'insensitive' } },
-                { sku: { contains: q, mode: 'insensitive' } },
-              ],
-            }
-          : undefined,
-      ].filter(Boolean) as Prisma.InventoryWhereInput[],
-    };
+    const items = await this.prisma.$queryRaw<Inventory[]>`
+      SELECT * FROM "Inventory"
+      WHERE (${category}::text IS NULL OR category = ${category})
+        AND (${pattern}::text IS NULL
+          OR name ILIKE ${pattern} OR category ILIKE ${pattern}
+          OR sku ILIKE ${pattern} OR quantity::text LIKE ${pattern})
+      ORDER BY "updatedAt" DESC`;
 
-    const items = await this.prisma.inventory.findMany({
-      where,
-      orderBy: { updatedAt: 'desc' },
-    });
-
-    return onlyLow
+    return params?.low
       ? items.filter((i) => i.quantity <= (i.minThreshold ?? 0))
       : items;
   }
@@ -84,13 +75,15 @@ export class InventoryService {
       throw new BadRequestException('Quantity must be a positive number');
     }
     return this.prisma.$transaction(async (tx) => {
-      const item = await tx.inventory.findUnique({ where: { id } });
-      if (!item) throw new NotFoundException('Item not found');
-
-      const updated = await tx.inventory.update({
-        where: { id },
-        data: { quantity: item.quantity + quantity },
+      const { count } = await tx.inventory.updateMany({
+        where: { id, quantity: { lte: INT4_MAX - quantity } },
+        data: { quantity: { increment: quantity } },
       });
+      if (count === 0) {
+        if (!(await tx.inventory.findUnique({ where: { id } }))) throw new NotFoundException('Item not found');
+        throw new BadRequestException(`Stock cannot exceed ${INT4_MAX}`);
+      }
+      const updated = await tx.inventory.findUniqueOrThrow({ where: { id } });
 
       await tx.inventoryMovement.create({
         data: {
@@ -110,16 +103,15 @@ export class InventoryService {
       throw new BadRequestException('Quantity must be a positive number');
     }
     return this.prisma.$transaction(async (tx) => {
-      const item = await tx.inventory.findUnique({ where: { id } });
-      if (!item) throw new NotFoundException('Item not found');
-      if (quantity > item.quantity) {
+      const { count } = await tx.inventory.updateMany({
+        where: { id, quantity: { gte: quantity } },
+        data: { quantity: { decrement: quantity } },
+      });
+      if (count === 0) {
+        if (!(await tx.inventory.findUnique({ where: { id } }))) throw new NotFoundException('Item not found');
         throw new BadRequestException('Insufficient stock');
       }
-
-      const updated = await tx.inventory.update({
-        where: { id },
-        data: { quantity: item.quantity - quantity },
-      });
+      const updated = await tx.inventory.findUniqueOrThrow({ where: { id } });
 
       await tx.inventoryMovement.create({
         data: {
@@ -140,13 +132,9 @@ export class InventoryService {
       throw new BadRequestException('Quantity must be a non-negative number');
     }
     return this.prisma.$transaction(async (tx) => {
-      const item = await tx.inventory.findUnique({ where: { id } });
-      if (!item) throw new NotFoundException('Item not found');
-
-      const updated = await tx.inventory.update({
-        where: { id },
-        data: { quantity: newQuantity },
-      });
+      const { count } = await tx.inventory.updateMany({ where: { id }, data: { quantity: newQuantity } });
+      if (count === 0) throw new NotFoundException('Item not found');
+      const updated = await tx.inventory.findUniqueOrThrow({ where: { id } });
 
       await tx.inventoryMovement.create({
         data: {
@@ -167,7 +155,7 @@ export class InventoryService {
 
     return this.prisma.inventoryMovement.findMany({
       where: { inventoryId: id },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { id: 'desc' },
       take: Math.max(1, Math.min(500, limit)),
     });
   }

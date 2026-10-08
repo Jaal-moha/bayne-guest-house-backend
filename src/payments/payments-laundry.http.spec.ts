@@ -16,7 +16,7 @@ process.env.JWT_SECRET = 'dto-test-secret';
 describe('Payments and laundry HTTP bodies', () => {
   let app: INestApplication;
   const payments = { create: jest.fn(), update: jest.fn() };
-  const laundry = { create: jest.fn(), update: jest.fn() };
+  const laundry = { create: jest.fn(), update: jest.fn(), updateStatus: jest.fn() };
   const jwt = new JwtService({ secret: 'dto-test-secret' });
   const send = (
     route: string,
@@ -154,20 +154,18 @@ describe('Payments and laundry HTTP bodies', () => {
     });
     expect(payments.create.mock.calls[0][0].details).toBeUndefined();
   });
-  it.each(['DINING', 'OTHER', 'LAUNDRY'])(
+  it.each(['DINING', 'OTHER'])(
     'parses identifiers for %s without a booking',
     async (serviceType) => {
       await send('/payments', 'post', {
         serviceType,
         guestId: '2',
-        laundryId: '3',
         amount: '25',
         method: 'cash',
       }).expect(201);
       expect(payments.create).toHaveBeenCalledWith({
         serviceType,
         guestId: 2,
-        laundryId: 3,
         amount: 25,
         method: 'cash',
       });
@@ -195,6 +193,21 @@ describe('Payments and laundry HTTP bodies', () => {
     const body = { items: '3x towels', status: 'done' };
     await send('/laundry/1', 'patch', body, 'housekeeping').expect(200);
     expect(laundry.update).toHaveBeenCalledWith(1, body);
+  });
+  it('treats a null status as missing, like a blank amount', async () => {
+    await send('/payments', 'post', { bookingId: 1, method: 'cash', status: null }, 'reception').expect(201);
+    expect(payments.create.mock.calls[0][0].status).toBeUndefined();
+    await send('/laundry', 'post', { guestId: 2, items: '1x towel', status: null }, 'housekeeping').expect(201);
+    expect(laundry.create.mock.calls[0][0].status).toBeUndefined();
+    await send('/laundry/1', 'patch', { status: null }, 'housekeeping').expect(200);
+    expect(laundry.update.mock.calls[0][1].status).toBeUndefined();
+  });
+
+  it('checks the laundry status route at the edge', async () => {
+    await send('/laundry/1/status', 'patch', { status: 'bogus' }, 'housekeeping').expect(400);
+    expect(laundry.updateStatus).not.toHaveBeenCalled();
+    await send('/laundry/1/status', 'patch', { status: 'done' }, 'housekeeping').expect(200);
+    expect(laundry.updateStatus).toHaveBeenCalledWith(1, 'done');
   });
   it('uses the real authentication and role guards', async () => {
     await request(app.getHttpServer()).post('/payments').send({}).expect(401);
@@ -229,5 +242,14 @@ describe('Payments and laundry HTTP bodies', () => {
       method: 'cash',
     }).expect(201);
     expect(payments.create.mock.calls[0][0].serviceType).toBe('DINING');
+  });
+
+  it('rejects a laundryId, since laundry orders record their own payment', async () => {
+    await send('/payments', 'post', {
+      serviceType: 'LAUNDRY',
+      laundryId: 3,
+      method: 'cash',
+    }).expect(400);
+    expect(payments.create).not.toHaveBeenCalled();
   });
 });

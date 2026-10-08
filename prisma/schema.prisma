@@ -25,6 +25,29 @@ enum InventoryMoveType {
   ADJUST
 }
 
+enum PaymentMethod {
+  cash
+  card
+  mobile
+  e_birr
+  cbe
+  cbe_birr
+  bank_transfer
+}
+
+enum PaymentStatus {
+  paid
+  unpaid
+  refunded
+  failed
+}
+
+enum LaundryStatus {
+  pending
+  in_progress
+  done
+}
+
 enum PaymentServiceType {
   ROOM
   LAUNDRY
@@ -96,14 +119,14 @@ model Payment {
   laundryId   Int?                @unique // ← NEW optional 1-1
   guestId     Int                 // ← NEW required guest link
   amount      Float
-  method      String
-  status      String
+  method      PaymentMethod
+  status      PaymentStatus       @default(paid)
   description String?
   createdAt   DateTime            @default(now())
   serviceType PaymentServiceType  @default(ROOM) // ← NEW
 
   booking Booking? @relation(fields: [bookingId], references: [id])
-  laundry Laundry? @relation(fields: [laundryId], references: [id])
+  laundry Laundry? @relation(fields: [laundryId], references: [id], onDelete: Cascade)
   guest   Guest   @relation(fields: [guestId], references: [id])
 }
 
@@ -123,7 +146,7 @@ model Laundry {
   id        Int      @id @default(autoincrement())
   guestId   Int
   items     String
-  status    String
+  status    LaundryStatus @default(pending)
   price     Float    @default(0) // ← NEW price per laundry
   createdAt DateTime @default(now())
 
@@ -155,5 +178,5 @@ model InventoryMovement {
   // userId    Int?
   // user      User? @relation(fields: [userId], references: [id])
 
-  inventory Inventory @relation(fields: [inventoryId], references: [id])
+  inventory Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
 }

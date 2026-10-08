@@ -3,13 +3,9 @@ import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { envValue } from './env';
 import { AppModule } from './app.module'; import { ValidationPipe } from '@nestjs/common';
-import { join } from 'node:path';
-import { existsSync, mkdirSync } from 'node:fs';
 
 
 async function bootstrap() {
-  const uploadPath = join(__dirname, '/upload/staff-ids');
-  existsSync(uploadPath) || mkdirSync(uploadPath, { recursive: true });
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
 
