@@ -83,24 +83,32 @@ describe('InventoryService reads', () => {
     });
   });
 
-  it('matches a numeric search as a substring of the quantity, like the old filter', async () => {
-    await service.findAll({ q: '12' });
+  const lastQuery = () => {
     const [sql, ...values] = prisma.$queryRaw.mock.calls.at(-1);
-    expect(sql.join('?')).toMatch(/quantity.*::text LIKE/i);
-    expect(values).toEqual(['%12%']);
-    const or = prisma.inventory.findMany.mock.calls.at(-1)[0].where.AND[0].OR;
-    expect(or).toContainEqual({ id: { in: [7] } });
-  });
+    return { sql: sql.join('?'), values };
+  };
 
-  it('searches a barcode longer than int32 without a numeric quantity clause', async () => {
-    await service.findAll({ q: '4006381333931' });
-    const where = prisma.inventory.findMany.mock.calls.at(-1)[0].where;
-    expect(JSON.stringify(where)).not.toContain('"quantity"');
-  });
-
-  it('skips the quantity lookup for a search with letters', async () => {
+  it('searches in one statement, matching quantity as a substring like the old filter', async () => {
     prisma.$queryRaw.mockClear();
-    await service.findAll({ q: 'soap' });
-    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    prisma.inventory.findMany.mockClear();
+    await service.findAll({ q: '12' });
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.inventory.findMany).not.toHaveBeenCalled();
+    const { sql, values } = lastQuery();
+    expect(sql).toMatch(/quantity::text LIKE/i);
+    expect(values).toContain('%12%');
+  });
+
+  it('treats % and _ in the search text literally', async () => {
+    await service.findAll({ q: '50%_off' });
+    expect(lastQuery().values).toContain('%50\\%\\_off%');
+  });
+
+  it('applies the low-stock filter to the rows the query returns', async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([
+      { id: 1, quantity: 2, minThreshold: 5 },
+      { id: 2, quantity: 9, minThreshold: 5 },
+    ]);
+    expect(await service.findAll({ low: true })).toEqual([{ id: 1, quantity: 2, minThreshold: 5 }]);
   });
 });
