@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy';
 import { LaundryController } from '../laundry/laundry.controller';
 import { LaundryService } from '../laundry/laundry.service';
@@ -34,6 +35,7 @@ describe('Payments and laundry HTTP bodies', () => {
       controllers: [PaymentsController, LaundryController],
       providers: [
         JwtStrategy,
+        ConfigService,
         { provide: PaymentsService, useValue: payments },
         { provide: LaundryService, useValue: laundry },
       ],

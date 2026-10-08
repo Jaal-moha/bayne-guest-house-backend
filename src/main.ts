@@ -25,8 +25,7 @@ async function bootstrap() {
 
 
 
-  // Force default to 3001 if PORT is not set
-  const port = process.env.PORT || 3000;
+  const port = configService.get<string>('PORT') ?? 3000;
   await app.listen(port);
   console.log(`Backend running at http://localhost:${port}`);
 }

@@ -4,6 +4,7 @@ import { PassportModule } from '@nestjs/passport';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AuthModule } from '../auth/auth.module';
+import { ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PrismaService } from '../prisma/prisma.service';
@@ -14,7 +15,7 @@ process.env.ATTENDANCE_API_KEY = 'test-key';
 
 @Module({
   imports: [PassportModule, JwtModule.register({ secret: 'test-secret' })],
-  providers: [JwtStrategy],
+  providers: [JwtStrategy, ConfigService],
   exports: [PassportModule, JwtModule],
 })
 class TestAuthModule {}
