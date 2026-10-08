@@ -1,10 +1,5 @@
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import * as path from 'path';
-import * as fs from 'fs';
-import { unlink } from 'fs/promises';
-import PDFDocument from 'pdfkit';
-import bwipjs from 'bwip-js';
 import * as bcrypt from 'bcryptjs';
 import { Role } from '@prisma/client';
 import { UpdateStaffDto } from './dto/update-staff.dto';
@@ -21,46 +16,6 @@ export class StaffService {
       if (!exists) return code;
     }
     return `EMP-${Date.now().toString().slice(-6)}`;
-  }
-
-  private async generateIdCardPdf(staff: { id: number; name: string; role: string; barcode: string }) {
-    const outDir = path.join(process.cwd(), 'public', 'staff-ids');
-    await fs.promises.mkdir(outDir, { recursive: true });
-    const filePath = path.join(outDir, `${staff.barcode}.pdf`);
-
-    const png = await bwipjs.toBuffer({
-      bcid: 'code128',
-      text: staff.barcode,
-      scale: 3,
-      height: 50,
-      includetext: false,
-    });
-
-    const doc = new PDFDocument({ size: [300, 420], margins: { top: 16, left: 16, right: 16, bottom: 16 } });
-    const stream = fs.createWriteStream(filePath);
-    doc.pipe(stream);
-
-    doc.rect(0, 0, 300, 420).fill('#ffffff');
-    doc.fillColor('#111827').fontSize(14).text('GuestHouse', { align: 'center' });
-    doc.moveDown(0.5);
-    doc.fontSize(12).text(staff.name, { align: 'center', bold: true });
-    doc.moveDown(0.2);
-    doc.fontSize(10).fillColor('#4b5563').text(staff.role, { align: 'center' });
-
-    const imgWidth = 220;
-    const x = (300 - imgWidth) / 2;
-    doc.image(png, x, 180, { width: imgWidth });
-    doc.moveDown(2);
-    doc.fontSize(10).fillColor('#374151').text(staff.barcode, { align: 'center' });
-
-    doc.end();
-
-    await new Promise<void>((resolve, reject) => {
-      stream.on('finish', () => resolve());
-      stream.on('error', (err) => reject(err));
-    });
-
-    return filePath;
   }
 
   async create(dto: CreateStaffDto) {
@@ -108,12 +63,6 @@ export class StaffService {
       where: { id: created.id },
       include: { user: { select: { id: true, email: true, role: true, staffId: true, name: true } } },
     });
-
-    try {
-      await this.generateIdCardPdf({ id: created.id, name: created.name, role: created.role, barcode: created.barcode });
-    } catch (err) {
-      console.error('Failed to generate ID card PDF', err);
-    }
 
     return { ...(withUser ?? created), idCardUrl: `/staff/${created.id}/id-card` };
   }
@@ -171,18 +120,6 @@ export class StaffService {
       }
     }
 
-    // Regenerate ID card PDF
-    try {
-      await this.generateIdCardPdf({
-        id: updatedStaff.id,
-        name: updatedStaff.name,
-        role: updatedStaff.role,
-        barcode: updatedStaff.barcode,
-      });
-    } catch (err) {
-      console.error('Failed to regenerate ID card PDF', err);
-    }
-
     // Return updated staff with user and ID card URL
     const withUser = await this.prisma.staff.findUnique({
       where: { id },
@@ -205,14 +142,6 @@ export class StaffService {
 
     // Delete staff
     await this.prisma.staff.delete({ where: { id } });
-
-    // Remove ID card PDF if exists
-    try {
-      const filePath = path.join(process.cwd(), 'public', 'staff-ids', `${staff.barcode}.pdf`);
-      await unlink(filePath);
-    } catch (err) {
-      // Ignore if file doesn't exist
-    }
 
     return { message: 'Staff deleted successfully' };
   }
