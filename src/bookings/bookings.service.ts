@@ -1,7 +1,18 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
+
+const ALREADY_BOOKED = 'Room is already booked in this date range';
+
+// The Booking_room_no_overlap exclusion constraint catches a concurrent booking that passed assertNoOverlap.
+function rethrowOverlap(error: unknown): never {
+  if (error instanceof Prisma.PrismaClientUnknownRequestError && error.message.includes('Booking_room_no_overlap')) {
+    throw new BadRequestException(ALREADY_BOOKED);
+  }
+  throw error;
+}
 
 @Injectable()
 export class BookingsService {
@@ -20,7 +31,7 @@ export class BookingsService {
       select: { id: true },
     });
     if (overlapping) {
-      throw new BadRequestException('Room is already booked in this date range');
+      throw new BadRequestException(ALREADY_BOOKED);
     }
   }
 
@@ -33,15 +44,17 @@ export class BookingsService {
 
     await this.assertNoOverlap(dto.roomId, checkIn, checkOut);
 
-    return this.prisma.booking.create({
-      data: {
-        guestId: dto.guestId,
-        roomId: dto.roomId,
-        checkIn,
-        checkOut,
-      },
-      include: { guest: true, room: true, payment: true },
-    });
+    return this.prisma.booking
+      .create({
+        data: {
+          guestId: dto.guestId,
+          roomId: dto.roomId,
+          checkIn,
+          checkOut,
+        },
+        include: { guest: true, room: true, payment: true },
+      })
+      .catch(rethrowOverlap);
   }
 
   findAll() {
@@ -88,16 +101,18 @@ export class BookingsService {
 
     await this.assertNoOverlap(roomId, checkIn, checkOut, id);
 
-    return this.prisma.booking.update({
-      where: { id },
-      data: {
-        guestId: dto.guestId ?? existing.guestId,
-        roomId,
-        checkIn,
-        checkOut,
-      },
-      include: { guest: true, room: true, payment: true },
-    });
+    return this.prisma.booking
+      .update({
+        where: { id },
+        data: {
+          guestId: dto.guestId ?? existing.guestId,
+          roomId,
+          checkIn,
+          checkOut,
+        },
+        include: { guest: true, room: true, payment: true },
+      })
+      .catch(rethrowOverlap);
   }
 
   remove(id: number) {
