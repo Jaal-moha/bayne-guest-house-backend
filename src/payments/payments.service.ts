@@ -50,35 +50,7 @@ export class PaymentsService {
     }
 
     if (serviceType === 'LAUNDRY') {
-      const laundryId = dto.laundryId;
-      if (!laundryId) throw new BadRequestException('laundryId is required for LAUNDRY payments');
-
-      const laundry = await this.prisma.laundry.findUnique({
-        where: { id: laundryId },
-        include: { guest: true, payment: true },
-      });
-      if (!laundry) throw new NotFoundException('Laundry not found');
-      if (laundry.payment) throw new BadRequestException('Payment already exists for this laundry');
-
-      const amount = dto.amount ?? laundry.price ?? 0;
-      if (!Number.isFinite(amount) || amount < 0) throw new BadRequestException('Invalid amount');
-
-      return this.prisma.payment.create({
-        data: {
-          laundryId,
-          guestId: laundry.guestId, // ← strict guest link
-          amount,
-          method: dto.method,
-          status: dto.status ?? 'paid',
-          description: dto.description ?? null,
-          serviceType: 'LAUNDRY' as any,
-        },
-        include: {
-          booking: { include: { guest: true, room: true } },
-          laundry: { include: { guest: true } },
-          guest: true,
-        } as any, // ← cast include
-      });
+      throw new BadRequestException('Laundry payments are recorded when the laundry order is created');
     }
 
     // DINING or OTHER

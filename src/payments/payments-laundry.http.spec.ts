@@ -158,14 +158,12 @@ describe('Payments and laundry HTTP bodies', () => {
       await send('/payments', 'post', {
         serviceType,
         guestId: '2',
-        laundryId: '3',
         amount: '25',
         method: 'cash',
       }).expect(201);
       expect(payments.create).toHaveBeenCalledWith({
         serviceType,
         guestId: 2,
-        laundryId: 3,
         amount: 25,
         method: 'cash',
       });
@@ -227,5 +225,14 @@ describe('Payments and laundry HTTP bodies', () => {
       method: 'cash',
     }).expect(201);
     expect(payments.create.mock.calls[0][0].serviceType).toBe('DINING');
+  });
+
+  it('rejects a laundryId, since laundry orders record their own payment', async () => {
+    await send('/payments', 'post', {
+      serviceType: 'LAUNDRY',
+      laundryId: 3,
+      method: 'cash',
+    }).expect(400);
+    expect(payments.create).not.toHaveBeenCalled();
   });
 });

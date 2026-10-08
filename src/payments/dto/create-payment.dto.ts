@@ -20,11 +20,6 @@ export class CreatePaymentDto {
   @IsOptional()
   @ToOptionalNumber()
   @IsInt()
-  laundryId?: number;
-
-  @IsOptional()
-  @ToOptionalNumber()
-  @IsInt()
   guestId?: number;
 
   // The guest card form sends card details. Drop them here so they are never stored or logged.

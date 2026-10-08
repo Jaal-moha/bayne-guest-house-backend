@@ -103,7 +103,7 @@ model Payment {
   serviceType PaymentServiceType  @default(ROOM) // ← NEW
 
   booking Booking? @relation(fields: [bookingId], references: [id])
-  laundry Laundry? @relation(fields: [laundryId], references: [id])
+  laundry Laundry? @relation(fields: [laundryId], references: [id], onDelete: Cascade)
   guest   Guest   @relation(fields: [guestId], references: [id])
 }
 
