@@ -40,6 +40,20 @@ describe('AuthModule config', () => {
     expect(claims.exp - claims.iat).toBe(7 * 24 * 60 * 60);
   });
 
+  it('treats a whitespace-only expiry as blank, like the secret', async () => {
+    const claims = await signWithEnvFile(
+      'JWT_SECRET=from-env-file\nJWT_EXPIRES_IN="  "\n',
+    );
+    expect(claims.exp - claims.iat).toBe(7 * 24 * 60 * 60);
+  });
+
+  it('reads a padded number of seconds as seconds', async () => {
+    const claims = await signWithEnvFile(
+      'JWT_SECRET=from-env-file\nJWT_EXPIRES_IN=" 3600 "\n',
+    );
+    expect(claims.exp - claims.iat).toBe(3600);
+  });
+
   it('reads a bare number of seconds as seconds, not milliseconds', async () => {
     const claims = await signWithEnvFile(
       'JWT_SECRET=from-env-file\nJWT_EXPIRES_IN=3600\n',
