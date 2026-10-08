@@ -14,7 +14,7 @@ async function bootstrap() {
 
   // Enable CORS for frontend communication
   app.enableCors({
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-api-token'],
     origin: [
       'http://localhost:3001', // frontend address
       ...(JSON.parse(configService.get('ALLOWED_ORIGINS') ?? '[]') ?? []),

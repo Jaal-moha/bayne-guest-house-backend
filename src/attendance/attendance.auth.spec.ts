@@ -116,6 +116,17 @@ describe('Attendance auth', () => {
       .expect(401);
   });
 
+  it.each(['wrong-key', 'x', 'test-kez'])(
+    'rejects the API key %s with 401',
+    async (key) => {
+      await http()
+        .post('/attendance/scan')
+        .set('x-api-key', key)
+        .send({ code: 'EMP-1' })
+        .expect(401);
+    },
+  );
+
   it('accepts a scan with a signed token or the API key', async () => {
     await http()
       .post('/attendance/scan')
