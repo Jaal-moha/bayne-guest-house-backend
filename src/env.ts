@@ -36,5 +36,10 @@ function parseOrigins(raw: string | undefined): string[] {
   if (!Array.isArray(origins) || !origins.every((o) => typeof o === 'string')) {
     throw new Error(`ALLOWED_ORIGINS must be a JSON array of strings, got ${raw}`);
   }
+  // CORS compares the Origin header as an exact string, so "https://a.example/" would never match.
+  const bad = origins.find((o) => !URL.canParse(o) || new URL(o).origin !== o);
+  if (bad !== undefined) {
+    throw new Error(`ALLOWED_ORIGINS entry "${bad}" is not an origin (scheme://host[:port], no path or trailing slash)`);
+  }
   return origins;
 }

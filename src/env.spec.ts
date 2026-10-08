@@ -41,4 +41,13 @@ describe('serverConfig', () => {
       );
     },
   );
+
+  it.each(['https://a.example/', 'https://a.example/app', 'a.example'])(
+    'rejects ALLOWED_ORIGINS entry %s, which no browser Origin header can match',
+    (origin) => {
+      expect(() => serverConfig(config({ ALLOWED_ORIGINS: JSON.stringify([origin]) }))).toThrow(
+        `ALLOWED_ORIGINS entry "${origin}" is not an origin`,
+      );
+    },
+  );
 });
