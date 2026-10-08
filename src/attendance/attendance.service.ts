@@ -4,7 +4,13 @@ import { CreateAttendanceDto } from './dto/create-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
 import { getAddisDayContext } from './addis-day';
 
-const dayKey = (date: string) => getAddisDayContext(new Date(date)).dayStartUtc;
+function toDate(value: string | null | undefined, field: string): Date {
+  const date = value == null ? new Date(NaN) : new Date(value);
+  if (Number.isNaN(date.getTime())) throw new BadRequestException(`${field} must be a readable date`);
+  return date;
+}
+
+const dayKey = (date: string) => getAddisDayContext(toDate(date, 'date')).dayStartUtc;
 
 function rethrowDuplicateDay(error: any): void {
   if (error?.code === 'P2002') throw new ConflictException('Attendance already exists for this staff member and day');
@@ -43,7 +49,12 @@ export class AttendanceService {
     try {
       return await this.prisma.attendance.update({
         where: { id },
-        data: { ...dto, ...(dto.date !== undefined ? { date: dayKey(dto.date) } : {}) },
+        data: {
+          ...(dto.staffId !== undefined ? { staffId: dto.staffId } : {}),
+          ...(dto.date !== undefined ? { date: dayKey(dto.date) } : {}),
+          ...(dto.checkIn !== undefined ? { checkIn: toDate(dto.checkIn, 'checkIn') } : {}),
+          ...(dto.checkOut !== undefined ? { checkOut: dto.checkOut === null ? null : toDate(dto.checkOut, 'checkOut') } : {}),
+        },
       });
     } catch (error) {
       rethrowDuplicateDay(error);
