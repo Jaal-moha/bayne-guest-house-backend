@@ -1,17 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { nights } from '../bookings/nights';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
 
 @Injectable()
 export class PaymentsService {
   constructor(private prisma: PrismaService) {}
-
-  private calcNights(checkIn: Date, checkOut: Date) {
-    const ms = checkOut.getTime() - checkIn.getTime();
-    const nights = Math.floor(ms / 86_400_000);
-    return nights <= 0 ? 1 : nights; // minimum 1 night
-  }
 
   async create(dto: CreatePaymentDto) {
     const serviceType = dto.serviceType ?? (dto.bookingId ? 'ROOM' : 'OTHER');
@@ -28,7 +23,7 @@ export class PaymentsService {
       if (booking.payment) throw new BadRequestException('Payment already exists for this booking');
 
       const amount =
-        dto.amount ?? this.calcNights(booking.checkIn, booking.checkOut) * (booking.room?.price ?? 0);
+        dto.amount ?? nights(booking.checkIn, booking.checkOut) * (booking.room?.price ?? 0);
 
       const payment = await this.prisma.payment.create({
         data: {
