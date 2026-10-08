@@ -1,4 +1,4 @@
-import { ToOptionalNumber } from '../../validation';
+import { BlankAsMissing, ToOptionalNumber } from '../../validation';
 import { LaundryStatus } from '@prisma/client';
 import { IsNumber, Min, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
@@ -9,6 +9,7 @@ export class UpdateLaundryDto {
   items?: string;
 
   @IsOptional()
+  @BlankAsMissing()
   @IsEnum(LaundryStatus)
   status?: LaundryStatus;
 

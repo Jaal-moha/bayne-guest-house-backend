@@ -13,3 +13,7 @@ export const ToOptionalNumber = () =>
   Transform(({ value }) =>
     value === null || (typeof value === 'string' && value.trim() === '') ? undefined : Number(value),
   );
+
+// A cleared select arrives as '' or null. Treat it as missing so the column default applies.
+export const BlankAsMissing = () =>
+  Transform(({ value }) => (value === null || value === '' ? undefined : value));

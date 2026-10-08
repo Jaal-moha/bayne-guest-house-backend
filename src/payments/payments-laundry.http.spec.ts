@@ -192,6 +192,15 @@ describe('Payments and laundry HTTP bodies', () => {
     await send('/laundry/1', 'patch', body, 'housekeeping').expect(200);
     expect(laundry.update).toHaveBeenCalledWith(1, body);
   });
+  it('treats a null status as missing, like a blank amount', async () => {
+    await send('/payments', 'post', { bookingId: 1, method: 'cash', status: null }, 'reception').expect(201);
+    expect(payments.create.mock.calls[0][0].status).toBeUndefined();
+    await send('/laundry', 'post', { guestId: 2, items: '1x towel', status: null }, 'housekeeping').expect(201);
+    expect(laundry.create.mock.calls[0][0].status).toBeUndefined();
+    await send('/laundry/1', 'patch', { status: null }, 'housekeeping').expect(200);
+    expect(laundry.update.mock.calls[0][1].status).toBeUndefined();
+  });
+
   it('checks the laundry status route at the edge', async () => {
     await send('/laundry/1/status', 'patch', { status: 'bogus' }, 'housekeeping').expect(400);
     expect(laundry.updateStatus).not.toHaveBeenCalled();

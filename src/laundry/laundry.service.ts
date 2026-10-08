@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { LaundryStatus } from '@prisma/client';
+import { LaundryStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLaundryDto } from './dto/create-laundry.dto';
 import { UpdateLaundryDto } from './dto/update-laundry.dto';
@@ -57,7 +57,7 @@ export class LaundryService {
    */
   async findAll(params: { status?: string; q?: string; guestId?: number }) {
     const { status, q, guestId } = params || {};
-    const where: any = {};
+    const where: Prisma.LaundryWhereInput = {};
 
     if (status && isLaundryStatus(status)) {
       where.status = status;
@@ -94,7 +94,7 @@ export class LaundryService {
     if (!existing) throw new NotFoundException('Laundry not found');
 
     // Allow updating price if provided (optional)
-    const patch: any = {
+    const patch: Prisma.LaundryUpdateInput = {
       ...(dto.items !== undefined ? { items: dto.items } : {}),
       ...(dto.status !== undefined ? { status: dto.status } : {}),
     };
