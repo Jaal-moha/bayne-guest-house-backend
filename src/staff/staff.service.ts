@@ -1,7 +1,6 @@
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcryptjs';
-import { Role } from '@prisma/client';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 import { CreateStaffDto } from './dto/create-staff.dto';
 
@@ -24,7 +23,7 @@ export class StaffService {
     const created = await this.prisma.staff.create({
       data: {
         name: dto.name,
-        role: dto.role as any,
+        role: dto.role,
         phone: dto.phone,
         emergencyContact: dto.emergencyContact ?? null,
         barcode,
@@ -46,7 +45,7 @@ export class StaffService {
           data: {
             email: dto.username,
             password: hashed,
-            role: dto.role as Role ?? 'reception' as Role,
+            role: dto.role,
             staffId: created.id,
             name: created.name,
             forceChangePassword: dto.forceChangePassword ?? true,
@@ -79,7 +78,7 @@ export class StaffService {
       where: { id },
       data: {
         name: dto.name ?? existingStaff.name,
-        role: dto.role as any ?? existingStaff.role,
+        role: dto.role ?? existingStaff.role,
         phone: dto.phone ?? existingStaff.phone,
         emergencyContact: dto.emergencyContact ?? existingStaff.emergencyContact,
       },
@@ -111,7 +110,7 @@ export class StaffService {
         await this.prisma.user.create({
           data: {
             ...userData,
-            role: updatedStaff.role as Role ?? 'reception' as Role,
+            role: updatedStaff.role,
             staffId: updatedStaff.id,
             name: updatedStaff.name,
             forceChangePassword: dto.forceChangePassword ?? true,
