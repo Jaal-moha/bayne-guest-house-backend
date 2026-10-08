@@ -45,35 +45,7 @@ export class PaymentsService {
     }
 
     if (serviceType === 'LAUNDRY') {
-      const laundryId = dto.laundryId;
-      if (!laundryId) throw new BadRequestException('laundryId is required for LAUNDRY payments');
-
-      const laundry = await this.prisma.laundry.findUnique({
-        where: { id: laundryId },
-        include: { guest: true, payment: true },
-      });
-      if (!laundry) throw new NotFoundException('Laundry not found');
-      if (laundry.payment) throw new BadRequestException('Payment already exists for this laundry');
-
-      const amount = dto.amount ?? laundry.price ?? 0;
-      if (!Number.isFinite(amount) || amount < 0) throw new BadRequestException('Invalid amount');
-
-      return this.prisma.payment.create({
-        data: {
-          laundryId,
-          guestId: laundry.guestId, // ← strict guest link
-          amount,
-          method: dto.method,
-          status: dto.status ?? 'paid',
-          description: dto.description ?? null,
-          serviceType: 'LAUNDRY' as any,
-        },
-        include: {
-          booking: { include: { guest: true, room: true } },
-          laundry: { include: { guest: true } },
-          guest: true,
-        } as any, // ← cast include
-      });
+      throw new BadRequestException('Laundry payments are recorded when the laundry order is created');
     }
 
     // DINING or OTHER
@@ -127,11 +99,20 @@ export class PaymentsService {
     return p;
   }
 
-  update(id: number, dto: UpdatePaymentDto) {
+  private async findLaundryPayment(id: number) {
+    const payment = await this.prisma.payment.findUnique({ where: { id } });
+    return payment?.serviceType === 'LAUNDRY' ? payment : null;
+  }
+
+  async update(id: number, dto: UpdatePaymentDto) {
+    const laundry = await this.findLaundryPayment(id);
+    if (laundry && dto.amount !== undefined && dto.amount !== laundry.amount) {
+      throw new BadRequestException('Laundry payments follow their order. Change the price on the laundry order instead');
+    }
     return this.prisma.payment.update({
       where: { id },
       data: {
-        ...(dto.amount !== undefined ? { amount: dto.amount } : {}),
+        ...(dto.amount !== undefined && !laundry ? { amount: dto.amount } : {}),
         ...(dto.method ? { method: dto.method } : {}),
         ...(dto.status ? { status: dto.status } : {}),
         ...(dto.description !== undefined ? { description: dto.description || null } : {}),
@@ -144,7 +125,10 @@ export class PaymentsService {
     });
   }
 
-  remove(id: number) {
+  async remove(id: number) {
+    if (await this.findLaundryPayment(id)) {
+      throw new BadRequestException('Laundry payments follow their order. Delete the laundry order instead');
+    }
     return this.prisma.payment.delete({ where: { id } });
   }
 }
