@@ -5,7 +5,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 
 export function jwtSecret(config: ConfigService): string {
   const secret = config.get<string>('JWT_SECRET');
-  if (!secret) throw new Error('JWT_SECRET is not set');
+  if (!secret?.trim()) throw new Error('JWT_SECRET is not set');
   return secret;
 }
 
