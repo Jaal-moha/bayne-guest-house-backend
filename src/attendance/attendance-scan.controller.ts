@@ -27,8 +27,8 @@ function getAddisDayContext(nowUtc = new Date()) {
   return { dayKey, dayStartUtc, dayEndUtc, nowUtc };
 }
 
-function apiKeyMatches(given: string | undefined, expected: string | undefined): boolean {
-  if (!given || !expected) return false;
+function apiKeyMatches(given: unknown, expected: string | undefined): boolean {
+  if (typeof given !== 'string' || !given || !expected) return false;
   const a = Buffer.from(given);
   const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
