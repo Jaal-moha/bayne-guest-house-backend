@@ -18,6 +18,7 @@ export class AttendanceController {
   }
 
   @Get()
+  @Roles('admin', 'manager', 'reception')
   findAll() {
     return this.attendanceService.findAll();
   }
@@ -33,6 +34,7 @@ export class AttendanceController {
   }
 
   @Delete(':id')
+  @Roles('admin', 'manager', 'reception')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.attendanceService.remove(id);
   }

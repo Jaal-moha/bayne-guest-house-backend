@@ -115,6 +115,8 @@ model Attendance {
   checkOut DateTime?
 
   staff Staff @relation(fields: [staffId], references: [id])
+
+  @@unique([staffId, date])
 }
 
 model Laundry {
