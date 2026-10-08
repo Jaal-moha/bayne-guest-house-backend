@@ -45,7 +45,7 @@ export class StatsService {
       start!.getTime() === this.startOfDay(now).getTime() &&
       end!.getTime() === this.endOfDay(now).getTime();
 
-    const [totalRooms, occupiedRoomsAtEnd, totalGuests, totalBookings, totalPayments, inventoryCount] =
+    const [totalRooms, occupiedRoomsAtEnd, totalGuests, totalBookings, totalPayments, inventoryCount, staffCount, laundryCount] =
       await Promise.all([
         this.prisma.room.count(),
         // occupied rooms at "end" (use now for lifetime to reflect current occupancy)
@@ -56,6 +56,8 @@ export class StatsService {
         this.prisma.booking.count(),
         this.prisma.payment.count(),
         this.prisma.inventory.count(),
+        this.prisma.staff.count(),
+        this.prisma.laundry.count(),
       ]);
 
     const occupancyRate =
@@ -127,9 +129,6 @@ export class StatsService {
       const price = b.room?.price ?? 0;
       unpaidTotal += n * price;
     }
-
-    const staffCount = 0;
-    const laundryCount = 0;
 
     // return fields: when lifetime, set a lifetime flag and use generic arrivals/departures names;
     // when a specific range is provided, preserve previous today-compatibility naming.
