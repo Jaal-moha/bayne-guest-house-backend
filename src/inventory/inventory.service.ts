@@ -27,6 +27,15 @@ export class InventoryService {
     const q = params?.q?.trim();
     const category = params?.category?.trim();
     const onlyLow = !!params?.low;
+    // The old in-memory filter matched String(quantity) as a substring, and the frontend's
+    // quantity search depends on it. Comparing as text also keeps a 13-digit barcode from overflowing int4.
+    const quantityIds =
+      q && /^[-\d]+$/.test(q)
+        ? (
+            await this.prisma.$queryRaw<{ id: number }[]>`
+              SELECT id FROM "Inventory" WHERE quantity::text LIKE ${`%${q}%`}`
+          ).map((r) => r.id)
+        : [];
 
     const where: Prisma.InventoryWhereInput = {
       AND: [
@@ -37,7 +46,7 @@ export class InventoryService {
                 { name: { contains: q, mode: 'insensitive' } },
                 { category: { contains: q, mode: 'insensitive' } },
                 { sku: { contains: q, mode: 'insensitive' } },
-                ...(/^\d+$/.test(q) && Number(q) <= INT4_MAX ? [{ quantity: Number(q) }] : []),
+                ...(quantityIds.length ? [{ id: { in: quantityIds } }] : []),
               ],
             }
           : undefined,
