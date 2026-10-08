@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateInventoryDto } from './dto/create-inventory.dto';
 import { UpdateInventoryDto } from './dto/update-inventory.dto';
 import { Prisma, InventoryMoveType } from '@prisma/client';
+import { INT4_MAX } from '../validation';
 
 @Injectable()
 export class InventoryService {
@@ -36,7 +37,7 @@ export class InventoryService {
                 { name: { contains: q, mode: 'insensitive' } },
                 { category: { contains: q, mode: 'insensitive' } },
                 { sku: { contains: q, mode: 'insensitive' } },
-                ...(/^\d+$/.test(q) ? [{ quantity: Number(q) }] : []),
+                ...(/^\d+$/.test(q) && Number(q) <= INT4_MAX ? [{ quantity: Number(q) }] : []),
               ],
             }
           : undefined,
@@ -85,8 +86,14 @@ export class InventoryService {
       throw new BadRequestException('Quantity must be a positive number');
     }
     return this.prisma.$transaction(async (tx) => {
-      const { count } = await tx.inventory.updateMany({ where: { id }, data: { quantity: { increment: quantity } } });
-      if (count === 0) throw new NotFoundException('Item not found');
+      const { count } = await tx.inventory.updateMany({
+        where: { id, quantity: { lte: INT4_MAX - quantity } },
+        data: { quantity: { increment: quantity } },
+      });
+      if (count === 0) {
+        if (!(await tx.inventory.findUnique({ where: { id } }))) throw new NotFoundException('Item not found');
+        throw new BadRequestException(`Stock cannot exceed ${INT4_MAX}`);
+      }
       const updated = await tx.inventory.findUniqueOrThrow({ where: { id } });
 
       await tx.inventoryMovement.create({
@@ -136,13 +143,9 @@ export class InventoryService {
       throw new BadRequestException('Quantity must be a non-negative number');
     }
     return this.prisma.$transaction(async (tx) => {
-      const item = await tx.inventory.findUnique({ where: { id } });
-      if (!item) throw new NotFoundException('Item not found');
-
-      const updated = await tx.inventory.update({
-        where: { id },
-        data: { quantity: newQuantity },
-      });
+      const { count } = await tx.inventory.updateMany({ where: { id }, data: { quantity: newQuantity } });
+      if (count === 0) throw new NotFoundException('Item not found');
+      const updated = await tx.inventory.findUniqueOrThrow({ where: { id } });
 
       await tx.inventoryMovement.create({
         data: {

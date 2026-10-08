@@ -13,3 +13,6 @@ export const ToOptionalNumber = () =>
   Transform(({ value }) =>
     value === null || (typeof value === 'string' && value.trim() === '') ? undefined : Number(value),
   );
+
+// Postgres INT4, which every Int column in the schema is.
+export const INT4_MAX = 2_147_483_647;

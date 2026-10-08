@@ -1,6 +1,6 @@
 import { InventoryMoveType } from '@prisma/client';
-import { IsEnum, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
-import { ToOptionalNumber } from '../../validation';
+import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { INT4_MAX, ToOptionalNumber } from '../../validation';
 
 export class CreateMovementDto {
   @IsEnum(InventoryMoveType)
@@ -9,6 +9,7 @@ export class CreateMovementDto {
   @ToOptionalNumber()
   @IsInt()
   @Min(0)
+  @Max(INT4_MAX)
   quantity!: number;
 
   @IsOptional()
