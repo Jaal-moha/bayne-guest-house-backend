@@ -14,6 +14,8 @@ describe('inventory movements over HTTP', () => {
   const item = { id: 3, name: 'Soap', quantity: 4 };
   const service = {
     findAll: jest.fn().mockResolvedValue([]),
+    create: jest.fn().mockResolvedValue(item),
+    update: jest.fn().mockResolvedValue(item),
     moveIn: jest.fn().mockResolvedValue(item),
     moveOut: jest.fn().mockResolvedValue(item),
     adjust: jest.fn().mockResolvedValue(item),
@@ -61,6 +63,21 @@ describe('inventory movements over HTTP', () => {
   it('rejects a quantity the column cannot hold', async () => {
     await post({ type: 'IN', quantity: 3000000000 }).expect(400);
     expect(service.moveIn).not.toHaveBeenCalled();
+  });
+
+  it('rejects an item quantity or threshold the column cannot hold', async () => {
+    await request(app.getHttpServer())
+      .post('/inventory')
+      .set('Authorization', auth)
+      .send({ name: 'Soap', category: 'clean', quantity: 3000000000 })
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch('/inventory/3')
+      .set('Authorization', auth)
+      .send({ minThreshold: 3000000000 })
+      .expect(400);
+    expect(service.create).not.toHaveBeenCalled();
+    expect(service.update).not.toHaveBeenCalled();
   });
 
   it('rejects an unknown movement type and a fractional quantity', async () => {
