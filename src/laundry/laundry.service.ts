@@ -110,10 +110,7 @@ export class LaundryService {
     return this.prisma.$transaction(async (tx) => {
       const laundry = await tx.laundry.update({ where: { id }, data: patch, include: { guest: true } });
       if (dto.price !== undefined) {
-        await tx.payment.updateMany({
-          where: { laundryId: id, status: { not: 'refunded' } },
-          data: { amount: dto.price },
-        });
+        await tx.payment.updateMany({ where: { laundryId: id }, data: { amount: dto.price } });
       }
       return laundry;
     });

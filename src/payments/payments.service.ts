@@ -104,19 +104,20 @@ export class PaymentsService {
     return p;
   }
 
-  private async assertNotLaundry(id: number, action: string, amount?: number) {
+  private async findLaundryPayment(id: number) {
     const payment = await this.prisma.payment.findUnique({ where: { id } });
-    if (payment?.serviceType === 'LAUNDRY' && (amount === undefined || amount !== payment.amount)) {
-      throw new BadRequestException(`Laundry payments follow their order. ${action} the laundry order instead`);
-    }
+    return payment?.serviceType === 'LAUNDRY' ? payment : null;
   }
 
   async update(id: number, dto: UpdatePaymentDto) {
-    if (dto.amount !== undefined) await this.assertNotLaundry(id, 'Change the price on', dto.amount);
+    const laundry = await this.findLaundryPayment(id);
+    if (laundry && dto.amount !== undefined && dto.amount !== laundry.amount) {
+      throw new BadRequestException('Laundry payments follow their order. Change the price on the laundry order instead');
+    }
     return this.prisma.payment.update({
       where: { id },
       data: {
-        ...(dto.amount !== undefined ? { amount: dto.amount } : {}),
+        ...(dto.amount !== undefined && !laundry ? { amount: dto.amount } : {}),
         ...(dto.method ? { method: dto.method } : {}),
         ...(dto.status ? { status: dto.status } : {}),
         ...(dto.description !== undefined ? { description: dto.description || null } : {}),
@@ -130,7 +131,9 @@ export class PaymentsService {
   }
 
   async remove(id: number) {
-    await this.assertNotLaundry(id, 'Delete');
+    if (await this.findLaundryPayment(id)) {
+      throw new BadRequestException('Laundry payments follow their order. Delete the laundry order instead');
+    }
     return this.prisma.payment.delete({ where: { id } });
   }
 }
