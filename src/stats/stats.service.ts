@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { nights } from '../bookings/nights';
 
 type SeriesPoint = { date: string; revenue: number; checkIns: number };
 
@@ -17,12 +18,6 @@ export class StatsService {
     x.setHours(23, 59, 59, 999);
     return x;
   }
-  private nights(checkIn: Date, checkOut: Date) {
-    const ms = checkOut.getTime() - checkIn.getTime();
-    const n = Math.ceil(ms / 86_400_000);
-    return n <= 0 ? 1 : n;
-  }
-
   async overview(range?: { start?: Date; end?: Date }) {
     const now = new Date();
 
@@ -125,7 +120,7 @@ export class StatsService {
 
     let unpaidTotal = 0;
     for (const b of unpaidBookings) {
-      const n = this.nights(b.checkIn, b.checkOut);
+      const n = nights(b.checkIn, b.checkOut);
       const price = b.room?.price ?? 0;
       unpaidTotal += n * price;
     }
