@@ -152,7 +152,7 @@ describe('Payments and laundry HTTP bodies', () => {
     });
     expect(payments.create.mock.calls[0][0].details).toBeUndefined();
   });
-  it.each(['DINING', 'OTHER', 'LAUNDRY'])(
+  it.each(['DINING', 'OTHER'])(
     'parses identifiers for %s without a booking',
     async (serviceType) => {
       await send('/payments', 'post', {

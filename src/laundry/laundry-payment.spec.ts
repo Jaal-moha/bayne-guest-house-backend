@@ -4,7 +4,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { LaundryService } from './laundry.service';
 
 describe('laundry payment ownership', () => {
-  it('moves the payment amount with a laundry price change', async () => {
+  const laundryTx = () => {
     const tx = {
       laundry: { update: jest.fn().mockResolvedValue({ id: 1, price: 200 }) },
       payment: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
@@ -12,18 +12,28 @@ describe('laundry payment ownership', () => {
     const prisma = {
       laundry: {
         findUnique: jest.fn().mockResolvedValue({ id: 1, price: 120 }),
-        update: tx.laundry.update,
       },
-      payment: tx.payment,
       $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
     };
-    await new LaundryService(prisma as unknown as PrismaService).update(1, {
-      price: 200,
-    });
+    return {
+      tx,
+      service: new LaundryService(prisma as unknown as PrismaService),
+    };
+  };
+
+  it('moves the unrefunded payment amount with a laundry price change, in the same transaction', async () => {
+    const { tx, service } = laundryTx();
+    await service.update(1, { price: 200 });
     expect(tx.payment.updateMany).toHaveBeenCalledWith({
-      where: { laundryId: 1 },
+      where: { laundryId: 1, status: { not: 'refunded' } },
       data: { amount: 200 },
     });
+  });
+
+  it('leaves the payment alone when the price does not change', async () => {
+    const { tx, service } = laundryTx();
+    await service.update(1, { status: 'done' });
+    expect(tx.payment.updateMany).not.toHaveBeenCalled();
   });
 
   it('refuses a separate payment for a laundry order', async () => {
@@ -45,5 +55,36 @@ describe('laundry payment ownership', () => {
       } as never),
     ).rejects.toThrow(BadRequestException);
     expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  describe('a laundry payment through /payments', () => {
+    const prisma = {
+      payment: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 7, serviceType: 'LAUNDRY' }),
+        update: jest.fn(),
+        delete: jest.fn(),
+      },
+    };
+    const payments = new PaymentsService(prisma as unknown as PrismaService);
+    beforeEach(() => jest.clearAllMocks());
+
+    it('cannot change its amount', async () => {
+      await expect(payments.update(7, { amount: 1 })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.payment.update).not.toHaveBeenCalled();
+    });
+
+    it('can still change its status, for a refund', async () => {
+      await payments.update(7, { status: 'refunded' });
+      expect(prisma.payment.update).toHaveBeenCalled();
+    });
+
+    it('cannot be deleted on its own', async () => {
+      await expect(payments.remove(7)).rejects.toThrow(BadRequestException);
+      expect(prisma.payment.delete).not.toHaveBeenCalled();
+    });
   });
 });
