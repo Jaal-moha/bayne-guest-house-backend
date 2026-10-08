@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { Test } from '@nestjs/testing';
@@ -31,6 +32,7 @@ describe('inventory movements over HTTP', () => {
       controllers: [InventoryController],
       providers: [
         JwtStrategy,
+        ConfigService,
         { provide: InventoryService, useValue: service },
       ],
     }).compile();
