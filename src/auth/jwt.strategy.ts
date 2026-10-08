@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
+import { envValue } from '../env';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 
 export function jwtSecret(config: ConfigService): string {
-  const secret = config.get<string>('JWT_SECRET');
-  if (!secret?.trim()) throw new Error('JWT_SECRET is not set');
+  const secret = envValue(config, 'JWT_SECRET');
+  if (!secret) throw new Error('JWT_SECRET is not set');
   return secret;
 }
 
