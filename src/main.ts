@@ -23,7 +23,8 @@ async function bootstrap() {
 
 
   const port = envValue(configService, 'PORT') ?? 3000;
-  await app.listen(port);
+  const host = envValue(configService, 'HOST');
+  await (host ? app.listen(port, host) : app.listen(port));
   console.log(`Backend running at http://localhost:${port}`);
 }
 bootstrap();
