@@ -15,7 +15,7 @@ process.env.JWT_SECRET = 'dto-test-secret';
 describe('Payments and laundry HTTP bodies', () => {
   let app: INestApplication;
   const payments = { create: jest.fn(), update: jest.fn() };
-  const laundry = { create: jest.fn(), update: jest.fn() };
+  const laundry = { create: jest.fn(), update: jest.fn(), updateStatus: jest.fn() };
   const jwt = new JwtService({ secret: 'dto-test-secret' });
   const send = (
     route: string,
@@ -191,6 +191,12 @@ describe('Payments and laundry HTTP bodies', () => {
     const body = { items: '3x towels', status: 'done' };
     await send('/laundry/1', 'patch', body, 'housekeeping').expect(200);
     expect(laundry.update).toHaveBeenCalledWith(1, body);
+  });
+  it('checks the laundry status route at the edge', async () => {
+    await send('/laundry/1/status', 'patch', { status: 'bogus' }, 'housekeeping').expect(400);
+    expect(laundry.updateStatus).not.toHaveBeenCalled();
+    await send('/laundry/1/status', 'patch', { status: 'done' }, 'housekeeping').expect(200);
+    expect(laundry.updateStatus).toHaveBeenCalledWith(1, 'done');
   });
   it('uses the real authentication and role guards', async () => {
     await request(app.getHttpServer()).post('/payments').send({}).expect(401);
