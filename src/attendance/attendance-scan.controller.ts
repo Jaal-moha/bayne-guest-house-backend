@@ -8,6 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Request } from 'express';
 
@@ -24,6 +25,13 @@ function getAddisDayContext(nowUtc = new Date()) {
   const dayStartUtc = new Date(Date.UTC(y, m, d) - offsetMs);
   const dayEndUtc = new Date(dayStartUtc.getTime() + 24 * 60 * 60 * 1000);
   return { dayKey, dayStartUtc, dayEndUtc, nowUtc };
+}
+
+function apiKeyMatches(given: unknown, expected: string | undefined): boolean {
+  if (typeof given !== 'string' || !given || !expected) return false;
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 type AttendanceAction = 'CHECK_IN' | 'CHECK_OUT' | 'ALREADY_CHECKED_OUT';
@@ -63,8 +71,7 @@ export class AttendanceScanController {
     const apiKeyHeader =
       (req.headers['x-api-key'] as string | undefined) ||
       (req.headers['x-api-token'] as string | undefined);
-    const apiKeyValid =
-      !!apiKeyHeader && !!process.env.ATTENDANCE_API_KEY && apiKeyHeader === process.env.ATTENDANCE_API_KEY;
+    const apiKeyValid = apiKeyMatches(apiKeyHeader, process.env.ATTENDANCE_API_KEY);
     if (!apiKeyValid && !(await this.hasValidToken(req))) {
       throw new UnauthorizedException('Missing or invalid credentials');
     }
