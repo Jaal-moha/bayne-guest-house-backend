@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { nights } from '../bookings/nights';
 
 type SeriesPoint = { date: string; revenue: number; checkIns: number };
 
@@ -17,12 +18,6 @@ export class StatsService {
     x.setHours(23, 59, 59, 999);
     return x;
   }
-  private nights(checkIn: Date, checkOut: Date) {
-    const ms = checkOut.getTime() - checkIn.getTime();
-    const n = Math.ceil(ms / 86_400_000);
-    return n <= 0 ? 1 : n;
-  }
-
   async overview(range?: { start?: Date; end?: Date }) {
     const now = new Date();
 
@@ -45,7 +40,7 @@ export class StatsService {
       start!.getTime() === this.startOfDay(now).getTime() &&
       end!.getTime() === this.endOfDay(now).getTime();
 
-    const [totalRooms, occupiedRoomsAtEnd, totalGuests, totalBookings, totalPayments, inventoryCount] =
+    const [totalRooms, occupiedRoomsAtEnd, totalGuests, totalBookings, totalPayments, inventoryCount, staffCount, laundryCount] =
       await Promise.all([
         this.prisma.room.count(),
         // occupied rooms at "end" (use now for lifetime to reflect current occupancy)
@@ -56,6 +51,8 @@ export class StatsService {
         this.prisma.booking.count(),
         this.prisma.payment.count(),
         this.prisma.inventory.count(),
+        this.prisma.staff.count(),
+        this.prisma.laundry.count(),
       ]);
 
     const occupancyRate =
@@ -123,13 +120,10 @@ export class StatsService {
 
     let unpaidTotal = 0;
     for (const b of unpaidBookings) {
-      const n = this.nights(b.checkIn, b.checkOut);
+      const n = nights(b.checkIn, b.checkOut);
       const price = b.room?.price ?? 0;
       unpaidTotal += n * price;
     }
-
-    const staffCount = 0;
-    const laundryCount = 0;
 
     // return fields: when lifetime, set a lifetime flag and use generic arrivals/departures names;
     // when a specific range is provided, preserve previous today-compatibility naming.

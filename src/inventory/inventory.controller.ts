@@ -1,24 +1,12 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, BadRequestException, Query, ParseIntPipe, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, DefaultValuePipe, Query, ParseIntPipe, UseGuards } from '@nestjs/common';
+import { InventoryMoveType } from '@prisma/client';
 import { AuthGuard } from '@nestjs/passport';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { InventoryService } from './inventory.service';
 import { CreateInventoryDto } from './dto/create-inventory.dto';
 import { UpdateInventoryDto } from './dto/update-inventory.dto';
-
-interface InventoryMovement {
-  id: number;
-  type: 'IN' | 'OUT' | 'ADJUST';
-  quantity: number;          // For ADJUST = new absolute quantity; IN/OUT = delta
-  reason?: string;
-  createdAt: string;
-  resultingQuantity: number;
-}
-
-// In‑memory movement storage (process-local; reset on restart)
-// TODO: Replace with persistent table (e.g. inventoryMovement) in Prisma.
-const movementStore: Record<number, InventoryMovement[]> = {};
-let movementSeq = 1;
+import { CreateMovementDto } from './dto/create-movement.dto';
 
 @Controller('inventory')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -32,33 +20,8 @@ export class InventoryController {
   }
 
   @Get()
-  async findAll(
-    @Query('q') q?: string,
-    @Query('category') category?: string,
-    @Query('low') low?: string,
-  ) {
-    // Fetch all first (service has no filtering yet)
-    const list = await this.inventoryService.findAll();
-    const tq = (q || '').trim().toLowerCase();
-    let filtered = list;
-
-    if (category) {
-      filtered = filtered.filter(i => i.category === category);
-    }
-    if (tq) {
-      filtered = filtered.filter(i =>
-        [i.name, i.category, i.sku, String(i.quantity)]
-          .filter(Boolean)
-          .some(v => v!.toString().toLowerCase().includes(tq))
-      );
-    }
-    if (low === 'true') {
-      filtered = filtered.filter(i => {
-        const min = (i as any).minThreshold ?? 0;
-        return i.quantity <= min;
-      });
-    }
-    return filtered;
+  findAll(@Query('q') q?: string, @Query('category') category?: string, @Query('low') low?: string) {
+    return this.inventoryService.findAll({ q, category, low: low === 'true' });
   }
 
   @Get('metrics')
@@ -105,48 +68,17 @@ export class InventoryController {
   }
 
   @Post(':id/movements')
-  async createMovement(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() body: { type: 'IN' | 'OUT' | 'ADJUST'; quantity: number; reason?: string }
-  ) {
-    const { type, quantity } = body || {};
-    if (!type || !['IN', 'OUT', 'ADJUST'].includes(type)) throw new BadRequestException('Invalid movement type');
-    if (quantity === undefined || quantity === null || isNaN(quantity)) throw new BadRequestException('Quantity required');
-    if (type !== 'ADJUST' && quantity <= 0) throw new BadRequestException('Quantity must be > 0');
-
-    const item = await this.inventoryService.findOne(id);
-    if (!item) throw new BadRequestException('Item not found');
-
-    let newQuantity: number;
-    if (type === 'IN') {
-      newQuantity = item.quantity + quantity;
-    } else if (type === 'OUT') {
-      if (quantity > item.quantity) throw new BadRequestException('Insufficient stock');
-      newQuantity = item.quantity - quantity;
-    } else {
-      if (quantity < 0) throw new BadRequestException('Quantity cannot be negative');
-      newQuantity = quantity; // absolute set
-    }
-
-    const updated = await this.inventoryService.update(id, { quantity: newQuantity });
-
-    const movement: InventoryMovement = {
-      id: movementSeq++,
-      type,
-      quantity,
-      reason: body.reason,
-      createdAt: new Date().toISOString(),
-      resultingQuantity: newQuantity,
-    };
-    movementStore[id] = movementStore[id] ? [movement, ...movementStore[id]] : [movement];
-
-    // Frontend expects updated item; history modal separately pulls /:id/movements
-    return await this.inventoryService.findOne(id); // ensure fresh value returned
+  createMovement(@Param('id', ParseIntPipe) id: number, @Body() body: CreateMovementDto) {
+    if (body.type === InventoryMoveType.IN) return this.inventoryService.moveIn(id, body.quantity, body.reason);
+    if (body.type === InventoryMoveType.OUT) return this.inventoryService.moveOut(id, body.quantity, body.reason);
+    return this.inventoryService.adjust(id, body.quantity, body.reason);
   }
 
   @Get(':id/movements')
-  async listMovements(@Param('id', ParseIntPipe) id: number) {
-    // Returns in-memory list (most recent first)
-    return movementStore[id] ?? [];
+  listMovements(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('limit', new DefaultValuePipe(100), ParseIntPipe) limit: number,
+  ) {
+    return this.inventoryService.movements(id, limit);
   }
 }

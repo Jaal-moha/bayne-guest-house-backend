@@ -1,12 +1,7 @@
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import * as path from 'path';
-import * as fs from 'fs';
-import { unlink } from 'fs/promises';
-import PDFDocument from 'pdfkit';
-import bwipjs from 'bwip-js';
 import * as bcrypt from 'bcryptjs';
-import { Prisma, Role } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 import { CreateStaffDto } from './dto/create-staff.dto';
 
@@ -41,46 +36,6 @@ export class StaffService {
     return `EMP-${Date.now().toString().slice(-6)}`;
   }
 
-  private async generateIdCardPdf(staff: { id: number; name: string; role: string; barcode: string }) {
-    const outDir = path.join(process.cwd(), 'public', 'staff-ids');
-    await fs.promises.mkdir(outDir, { recursive: true });
-    const filePath = path.join(outDir, `${staff.barcode}.pdf`);
-
-    const png = await bwipjs.toBuffer({
-      bcid: 'code128',
-      text: staff.barcode,
-      scale: 3,
-      height: 50,
-      includetext: false,
-    });
-
-    const doc = new PDFDocument({ size: [300, 420], margins: { top: 16, left: 16, right: 16, bottom: 16 } });
-    const stream = fs.createWriteStream(filePath);
-    doc.pipe(stream);
-
-    doc.rect(0, 0, 300, 420).fill('#ffffff');
-    doc.fillColor('#111827').fontSize(14).text('GuestHouse', { align: 'center' });
-    doc.moveDown(0.5);
-    doc.fontSize(12).text(staff.name, { align: 'center', bold: true });
-    doc.moveDown(0.2);
-    doc.fontSize(10).fillColor('#4b5563').text(staff.role, { align: 'center' });
-
-    const imgWidth = 220;
-    const x = (300 - imgWidth) / 2;
-    doc.image(png, x, 180, { width: imgWidth });
-    doc.moveDown(2);
-    doc.fontSize(10).fillColor('#374151').text(staff.barcode, { align: 'center' });
-
-    doc.end();
-
-    await new Promise<void>((resolve, reject) => {
-      stream.on('finish', () => resolve());
-      stream.on('error', (err) => reject(err));
-    });
-
-    return filePath;
-  }
-
   async create(dto: CreateStaffDto) {
     const barcode = await this.generateUniqueBarcode();
     const hashed = dto.username && dto.password ? await bcrypt.hash(dto.password, 10) : null;
@@ -90,7 +45,7 @@ export class StaffService {
         const staff = await tx.staff.create({
           data: {
             name: dto.name,
-            role: dto.role as any,
+            role: dto.role,
             phone: dto.phone,
             emergencyContact: dto.emergencyContact ?? null,
             barcode,
@@ -101,7 +56,7 @@ export class StaffService {
             data: {
               email: dto.username!,
               password: hashed,
-              role: dto.role as Role ?? 'reception' as Role,
+              role: dto.role,
               staffId: staff.id,
               name: staff.name,
               forceChangePassword: dto.forceChangePassword ?? true,
@@ -111,12 +66,6 @@ export class StaffService {
         return tx.staff.findUniqueOrThrow({ where: { id: staff.id }, include: { user: USER_FIELDS } });
       }),
     );
-
-    try {
-      await this.generateIdCardPdf({ id: created.id, name: created.name, role: created.role, barcode: created.barcode });
-    } catch (err) {
-      console.error('Failed to generate ID card PDF', err);
-    }
 
     return { ...created, idCardUrl: `/staff/${created.id}/id-card` };
   }
@@ -139,7 +88,7 @@ export class StaffService {
           where: { id },
           data: {
             name: dto.name ?? existingStaff.name,
-            role: dto.role as any ?? existingStaff.role,
+            role: dto.role ?? existingStaff.role,
             phone: dto.phone ?? existingStaff.phone,
             emergencyContact: dto.emergencyContact ?? existingStaff.emergencyContact,
           },
@@ -150,7 +99,7 @@ export class StaffService {
           await tx.user.create({
             data: {
               ...userData,
-              role: staff.role as Role ?? 'reception' as Role,
+              role: staff.role,
               staffId: staff.id,
               name: staff.name,
               forceChangePassword: dto.forceChangePassword ?? true,
@@ -160,18 +109,6 @@ export class StaffService {
         return tx.staff.findUniqueOrThrow({ where: { id }, include: { user: USER_FIELDS } });
       }),
     );
-
-    // Regenerate ID card PDF
-    try {
-      await this.generateIdCardPdf({
-        id: updatedStaff.id,
-        name: updatedStaff.name,
-        role: updatedStaff.role,
-        barcode: updatedStaff.barcode,
-      });
-    } catch (err) {
-      console.error('Failed to regenerate ID card PDF', err);
-    }
 
     return { ...updatedStaff, idCardUrl: `/staff/${updatedStaff.id}/id-card` };
   }
@@ -187,14 +124,6 @@ export class StaffService {
       if (staff.user) await tx.user.delete({ where: { id: staff.user.id } });
       await tx.staff.delete({ where: { id } });
     });
-
-    // Remove ID card PDF if exists
-    try {
-      const filePath = path.join(process.cwd(), 'public', 'staff-ids', `${staff.barcode}.pdf`);
-      await unlink(filePath);
-    } catch (err) {
-      // Ignore if file doesn't exist
-    }
 
     return { message: 'Staff deleted successfully' };
   }

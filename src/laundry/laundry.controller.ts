@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { LaundryService } from './laundry.service';
 import { CreateLaundryDto } from './dto/create-laundry.dto';
-import { UpdateLaundryDto } from './dto/update-laundry.dto';
+import { UpdateLaundryDto, UpdateLaundryStatusDto } from './dto/update-laundry.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
@@ -45,9 +45,8 @@ export class LaundryController {
 
   @Patch(':id/status')
   @Roles('admin', 'housekeeping', 'manager')
-  updateStatus(@Param('id', ParseIntPipe) id: number, @Body('status') status: string) {
-    // Service now validates: pending | in_progress | done
-    return this.laundry.updateStatus(id, status);
+  updateStatus(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateLaundryStatusDto) {
+    return this.laundry.updateStatus(id, body.status);
   }
 
   @Delete(':id')

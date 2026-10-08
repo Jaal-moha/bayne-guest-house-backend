@@ -1,10 +1,5 @@
-import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
-
-export const ROLE_VALUES = [
-  'admin','manager','reception','housekeeping','barista','security','finance','store',
-] as const;
-
-export type RoleLiteral = typeof ROLE_VALUES[number];
+import { Role } from '@prisma/client';
+import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateUserForStaffDto {
   @IsEmail()
@@ -16,6 +11,6 @@ export class CreateUserForStaffDto {
 
   // role is optional when creating a user for an existing staff member
   @IsOptional()
-  @IsIn(ROLE_VALUES)
-  role?: RoleLiteral;
+  @IsEnum(Role)
+  role?: Role;
 }
