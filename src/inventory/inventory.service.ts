@@ -84,13 +84,8 @@ export class InventoryService {
       throw new BadRequestException('Quantity must be a positive number');
     }
     return this.prisma.$transaction(async (tx) => {
-      const item = await tx.inventory.findUnique({ where: { id } });
-      if (!item) throw new NotFoundException('Item not found');
-
-      const updated = await tx.inventory.update({
-        where: { id },
-        data: { quantity: item.quantity + quantity },
-      });
+      if (!(await tx.inventory.findUnique({ where: { id } }))) throw new NotFoundException('Item not found');
+      const updated = await tx.inventory.update({ where: { id }, data: { quantity: { increment: quantity } } });
 
       await tx.inventoryMovement.create({
         data: {
@@ -110,16 +105,15 @@ export class InventoryService {
       throw new BadRequestException('Quantity must be a positive number');
     }
     return this.prisma.$transaction(async (tx) => {
-      const item = await tx.inventory.findUnique({ where: { id } });
-      if (!item) throw new NotFoundException('Item not found');
-      if (quantity > item.quantity) {
+      const { count } = await tx.inventory.updateMany({
+        where: { id, quantity: { gte: quantity } },
+        data: { quantity: { decrement: quantity } },
+      });
+      if (count === 0) {
+        if (!(await tx.inventory.findUnique({ where: { id } }))) throw new NotFoundException('Item not found');
         throw new BadRequestException('Insufficient stock');
       }
-
-      const updated = await tx.inventory.update({
-        where: { id },
-        data: { quantity: item.quantity - quantity },
-      });
+      const updated = await tx.inventory.findUniqueOrThrow({ where: { id } });
 
       await tx.inventoryMovement.create({
         data: {

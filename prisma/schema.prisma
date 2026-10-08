@@ -155,5 +155,5 @@ model InventoryMovement {
   // userId    Int?
   // user      User? @relation(fields: [userId], references: [id])
 
-  inventory Inventory @relation(fields: [inventoryId], references: [id])
+  inventory Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
 }
