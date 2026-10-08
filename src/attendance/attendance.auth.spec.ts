@@ -52,15 +52,32 @@ describe('Attendance auth', () => {
     await http().delete('/attendance/1').expect(401);
   });
 
-  it('limits attendance records to admin and manager', async () => {
+  it('limits attendance records to admin, manager and reception', async () => {
     await http()
       .get('/attendance')
-      .set('Authorization', bearer('reception'))
+      .set('Authorization', bearer('housekeeping'))
       .expect(403);
+    for (const role of ['admin', 'manager', 'reception']) {
+      await http()
+        .get('/attendance')
+        .set('Authorization', bearer(role))
+        .expect(200);
+    }
+  });
+
+  it('gives reception only the list and delete the attendance page uses', async () => {
+    const auth = bearer('reception');
     await http()
-      .get('/attendance')
-      .set('Authorization', bearer('manager'))
-      .expect(200);
+      .post('/attendance')
+      .set('Authorization', auth)
+      .send({ staffId: 1 })
+      .expect(403);
+    await http().get('/attendance/1').set('Authorization', auth).expect(403);
+    await http()
+      .patch('/attendance/1')
+      .set('Authorization', auth)
+      .send({})
+      .expect(403);
   });
 
   it('rejects a scan with an unsigned token', async () => {

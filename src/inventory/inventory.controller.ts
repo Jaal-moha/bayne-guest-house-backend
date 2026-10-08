@@ -22,7 +22,7 @@ let movementSeq = 1;
 
 @Controller('inventory')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('admin', 'manager', 'store')
+@Roles('admin', 'manager', 'store', 'barista', 'reception')
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
@@ -94,6 +94,7 @@ export class InventoryController {
   }
 
   @Patch(':id')
+  @Roles('admin', 'manager', 'store')
   update(@Param('id', ParseIntPipe) id: number, @Body() updateInventoryDto: UpdateInventoryDto) {
     return this.inventoryService.update(id, updateInventoryDto);
   }
