@@ -48,7 +48,9 @@ http() {
   [[ -n "$token" ]] && args+=(-H "Authorization: Bearer $token")
   local h; for h in "${EXTRA_HEADERS[@]}"; do args+=(-H "$h"); done
   [[ -n "$body" ]] && args+=(-H 'Content-Type: application/json' --data "$body")
-  curl "${args[@]}" 2>>"$RUN_DIR/curl.log" || echo 000
+  local code
+  code="$(curl "${args[@]}" 2>>"$RUN_DIR/curl.log")" || code=000
+  echo "$code"
 }
 
 cmd_up() {
