@@ -5,7 +5,10 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AuthModule } from '../auth/auth.module';
 import { ConfigService } from '@nestjs/config';
+import type { Role } from '@prisma/client';
 import { JwtStrategy } from '../auth/jwt.strategy';
+import { fakeUsers } from '../auth/fake-users';
+import { UsersService } from '../users/users.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { AttendanceModule } from './attendance.module';
@@ -13,10 +16,12 @@ import { AttendanceModule } from './attendance.module';
 process.env.JWT_SECRET = 'test-secret';
 process.env.ATTENDANCE_API_KEY = 'test-key';
 
+const users = fakeUsers();
+
 @Module({
   imports: [PassportModule, JwtModule.register({ secret: 'test-secret' })],
-  providers: [JwtStrategy, ConfigService],
-  exports: [PassportModule, JwtModule],
+  providers: [JwtStrategy, ConfigService, { provide: UsersService, useValue: users.service }],
+  exports: [PassportModule, JwtModule, JwtStrategy],
 })
 class TestAuthModule {}
 
@@ -27,8 +32,8 @@ describe('Attendance auth', () => {
     attendance: { findMany: jest.fn().mockResolvedValue([]) },
     staff: { findUnique: jest.fn().mockResolvedValue(null) },
   };
-  const bearer = (role: string) =>
-    `Bearer ${jwt.sign({ sub: 1, email: 'x@example.com', role })}`;
+  const bearer = (role: Role) =>
+    `Bearer ${jwt.sign({ sub: users.add({ role }) })}`;
   const http = () => request(app.getHttpServer());
 
   beforeAll(async () => {
@@ -58,7 +63,7 @@ describe('Attendance auth', () => {
       .get('/attendance')
       .set('Authorization', bearer('housekeeping'))
       .expect(403);
-    for (const role of ['admin', 'manager', 'reception']) {
+    for (const role of ['admin', 'manager', 'reception'] as const) {
       await http()
         .get('/attendance')
         .set('Authorization', bearer(role))

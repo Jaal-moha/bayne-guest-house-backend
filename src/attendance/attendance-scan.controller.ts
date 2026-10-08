@@ -8,6 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { JwtStrategy } from '../auth/jwt.strategy';
 import { timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Request } from 'express';
@@ -39,13 +40,14 @@ export class AttendanceScanController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly sessions: JwtStrategy,
   ) {}
 
   private async hasValidToken(req: Request): Promise<boolean> {
     const token = req.headers.authorization?.replace(/^bearer\s+/i, '');
     if (!token) return false;
     try {
-      await this.jwt.verifyAsync(token);
+      await this.sessions.validate(await this.jwt.verifyAsync(token));
       return true;
     } catch {
       return false;

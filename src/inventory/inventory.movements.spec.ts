@@ -5,6 +5,8 @@ import { PassportModule } from '@nestjs/passport';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { JwtStrategy } from '../auth/jwt.strategy';
+import { fakeUsers } from '../auth/fake-users';
+import { UsersService } from '../users/users.service';
 import { validationPipeOptions } from '../validation';
 import { InventoryController } from './inventory.controller';
 import { InventoryService } from './inventory.service';
@@ -12,6 +14,7 @@ import { InventoryService } from './inventory.service';
 describe('inventory movements over HTTP', () => {
   let app: INestApplication;
   let auth: string;
+  const users = fakeUsers();
   const item = { id: 3, name: 'Soap', quantity: 4 };
   const service = {
     findAll: jest.fn().mockResolvedValue([]),
@@ -33,13 +36,14 @@ describe('inventory movements over HTTP', () => {
       providers: [
         JwtStrategy,
         ConfigService,
+        { provide: UsersService, useValue: users.service },
         { provide: InventoryService, useValue: service },
       ],
     }).compile();
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe(validationPipeOptions));
     await app.init();
-    auth = `Bearer ${moduleRef.get(JwtService).sign({ sub: 1, role: 'store' })}`;
+    auth = `Bearer ${moduleRef.get(JwtService).sign({ sub: users.add({ role: 'store' }) })}`;
   });
   beforeEach(() => jest.clearAllMocks());
   afterAll(() => app.close());

@@ -5,7 +5,10 @@ import { PassportModule } from '@nestjs/passport';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { ConfigService } from '@nestjs/config';
+import type { Role } from '@prisma/client';
 import { JwtStrategy } from '../auth/jwt.strategy';
+import { fakeUsers } from '../auth/fake-users';
+import { UsersService } from '../users/users.service';
 import { LaundryController } from '../laundry/laundry.controller';
 import { LaundryService } from '../laundry/laundry.service';
 import { PaymentsController } from './payments.controller';
@@ -18,15 +21,16 @@ describe('Payments and laundry HTTP bodies', () => {
   const payments = { create: jest.fn(), update: jest.fn() };
   const laundry = { create: jest.fn(), update: jest.fn(), updateStatus: jest.fn() };
   const jwt = new JwtService({ secret: 'dto-test-secret' });
+  const users = fakeUsers();
   const send = (
     route: string,
     verb: 'post' | 'patch',
     body: object,
-    role = 'manager',
+    role: Role = 'manager',
   ) =>
     request(app.getHttpServer())
       [verb](route)
-      .set('Authorization', `Bearer ${jwt.sign({ sub: 1, role })}`)
+      .set('Authorization', `Bearer ${jwt.sign({ sub: users.add({ role }) })}`)
       .send(body);
 
   beforeAll(async () => {
@@ -36,6 +40,7 @@ describe('Payments and laundry HTTP bodies', () => {
       providers: [
         JwtStrategy,
         ConfigService,
+        { provide: UsersService, useValue: users.service },
         { provide: PaymentsService, useValue: payments },
         { provide: LaundryService, useValue: laundry },
       ],
