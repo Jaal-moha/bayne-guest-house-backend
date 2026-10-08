@@ -14,6 +14,8 @@ import { StatsModule } from './stats/stats.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { APP_FILTER } from '@nestjs/core';
+import { PrismaNotFoundFilter } from './prisma/prisma-not-found.filter';
 
 @Module({
   imports: [
@@ -32,6 +34,6 @@ import { AppService } from './app.service';
     StatsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_FILTER, useClass: PrismaNotFoundFilter }],
 })
 export class AppModule {}
