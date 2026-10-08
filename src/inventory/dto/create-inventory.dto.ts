@@ -1,4 +1,5 @@
-import { IsInt, IsIn, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsInt, IsIn, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { INT4_MAX } from '../../validation';
 
 export class CreateInventoryDto {
   @IsString()
@@ -22,10 +23,12 @@ export class CreateInventoryDto {
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(INT4_MAX)
   quantity?: number;
 
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(INT4_MAX)
   minThreshold?: number;
 }
