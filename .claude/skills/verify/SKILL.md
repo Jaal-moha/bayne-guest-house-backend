@@ -22,9 +22,9 @@ It installs deps if `node_modules` is missing, runs `prisma generate`, starts a 
 - `READY base=http://127.0.0.1:<port> id=<id> rev=<git-sha>[-dirty-<hash>] evidence=<dir>` means it's up. Use that `base` and nothing else. The hash covers every change under `src` and `prisma`, untracked files included, so a second edit to a dirty tree still shows as stale.
 - `FAIL <step> log=<path>` means it isn't. Read the named log. Steps: `npm-ci`, `prisma-generate`, `install-postgres`, `hydrate-postgres`, `initdb`, `postgres-start`, `createdb`, `migrate`, `seed`, `build`, `server-exited`, `health-timeout`.
 
-`up` is idempotent. If a healthy instance exists it prints `READY` again and reuses its database. If the instance is stale it tears it down and starts over. Postgres comes from the `@embedded-postgres/linux-x64` npm binaries installed under `.verify/tools/`, so Docker isn't needed.
+`up` is idempotent. If a healthy instance runs the current tree it prints `READY` again and reuses its database. If the instance is unhealthy, or `doctor` reports `STALE build-rev`, it tears it down and starts over, so after editing `src/` or `prisma/` a plain `up` rebuilds. Postgres comes from the `@embedded-postgres/linux-x64` npm binaries installed under `.verify/tools/`, so Docker isn't needed.
 
-Code changes need a rebuild. `up` won't rebuild a healthy instance, so after editing `src/` or `prisma/` run `$S down && $S up`. `doctor` prints `STALE build-rev` when the running build is older than the working tree.
+`doctor` prints `STALE build-rev` when the running build is older than the working tree, and the next `up` rebuilds. The database is recreated with it, so re-run the recipe's setup steps.
 
 Parallel instances need `VERIFY_ID=<name>` on every command and a worktree each. Each id gets its own ports, database, run dir and evidence dir, but `up` builds into the checkout's shared `dist/` and Prisma client, so two ids in one checkout rebuild under each other. Never drive an instance whose `up` you didn't run.
 
@@ -68,7 +68,7 @@ A proof needs all of these.
 $S down
 ```
 
-It kills only the pid recorded at `up`, after checking that its cmdline is `dist/src/main`. It stops the Postgres cluster with `pg_ctl`, deletes the run dir and database, and prints `DOWN ok evidence=<dir>`. Evidence survives. It's safe to run when nothing is up and prints `DOWN nothing-running`. Run it after every session, including failed `up` attempts: it also stops a cluster that a failed `up` left running. If the server or the cluster refuses to stop, it prints `FAIL server-stop` or `FAIL postgres-stop` and keeps the run dir.
+It kills only the pid recorded at `up`, after checking that its cmdline is `dist/src/main`. It stops the Postgres cluster with `pg_ctl`, deletes the run dir and database, and prints `DOWN ok evidence=<dir>`. Evidence survives. It's safe to run when nothing is up and prints `DOWN nothing-running`. Run it after every session, including failed `up` attempts: it also stops a cluster that a failed `up` left running, and keeps that attempt's logs under `.verify/evidence/<id>/failed-<timestamp>/`. If the server or the cluster refuses to stop, it prints `FAIL server-stop` or `FAIL postgres-stop` and keeps the run dir.
 
 ## Helpers
 

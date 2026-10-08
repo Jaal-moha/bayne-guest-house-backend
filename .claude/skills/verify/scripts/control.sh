@@ -52,7 +52,8 @@ http() {
 
 cmd_up() {
   if [[ -f "$STATE" ]]; then
-    if cmd_doctor >/dev/null; then load_state; ready_line; return 0; fi
+    local report
+    if report="$(cmd_doctor)" && [[ "$report" != *"STALE build-rev"* ]]; then load_state; ready_line; return 0; fi
     cmd_down >/dev/null
   fi
   local evidence="$EVIDENCE_ROOT/$(date -u +%Y%m%dT%H%M%SZ)"
@@ -157,7 +158,7 @@ cmd_call() {
   local token=""
   [[ "$who" != anon ]] && { token="$(cmd_token "$who")" || { echo "$token"; exit 1; }; }
   local code; code="$(http "$method" "$path" "$token" "$body")"
-  [[ "$code" == 000 ]] && die "http-unreachable base=$BASE_URL (run 'control.sh doctor')"
+  [[ "$code" == 000 ]] && { rm -f "$RUN_DIR/last.json"; die "http-unreachable base=$BASE_URL (dead or slower than 30s, run 'control.sh doctor')"; }
   local seq; seq=$(( $(find "$EVIDENCE_DIR" -maxdepth 1 -name '*.json' | wc -l) + 1 ))
   local file; file="$EVIDENCE_DIR/$(printf '%03d' "$seq")-$who-$method-$(echo "$path" | tr -c 'a-zA-Z0-9\n' '_' | cut -c2-60).json"
   local resp
@@ -201,9 +202,11 @@ cmd_down() {
     "$PG_BIN/pg_ctl" -D "$RUN_DIR/pgdata" -m fast -w stop >/dev/null 2>&1
     "$PG_BIN/pg_ctl" -D "$RUN_DIR/pgdata" status >/dev/null 2>&1 && die "postgres-stop run=$RUN_DIR"
   fi
-  [[ -d "${EVIDENCE_DIR:-}" ]] && cp "$RUN_DIR/server.log" "$RUN_DIR/postgres.log" "$EVIDENCE_DIR/" 2>/dev/null
+  local keep="${EVIDENCE_DIR:-$EVIDENCE_ROOT/failed-$(date -u +%Y%m%dT%H%M%SZ)}"
+  mkdir -p "$keep"
+  cp "$RUN_DIR"/*.log "$keep/" 2>/dev/null
   rm -rf "$RUN_DIR"
-  echo "DOWN ok evidence=${EVIDENCE_DIR:-$EVIDENCE_ROOT}"
+  echo "DOWN ok evidence=$keep"
 }
 
 case "${1:-}" in
