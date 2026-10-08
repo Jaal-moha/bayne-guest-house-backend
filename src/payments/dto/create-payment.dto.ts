@@ -1,10 +1,7 @@
-import { ToOptionalNumber } from '../../validation';
+import { BlankAsMissing, ToOptionalNumber } from '../../validation';
 import { Transform } from 'class-transformer';
-import { PaymentServiceType } from '@prisma/client';
-import { IsEnum, IsInt, IsIn, IsNumber, IsOptional, IsString, MaxLength } from 'class-validator';
-
-export const PAYMENT_METHODS = ['cash', 'card', 'mobile', 'e_birr', 'cbe', 'cbe_birr', 'bank_transfer'] as const;
-export const PAYMENT_STATUSES = ['paid', 'refunded', 'failed', 'unpaid'] as const;
+import { PaymentMethod, PaymentServiceType, PaymentStatus } from '@prisma/client';
+import { IsEnum, IsInt, IsNumber, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreatePaymentDto {
   @IsOptional()
@@ -32,12 +29,13 @@ export class CreatePaymentDto {
   @IsNumber()
   amount?: number;
 
-  @IsIn(PAYMENT_METHODS as unknown as string[])
-  method!: string;
+  @IsEnum(PaymentMethod)
+  method!: PaymentMethod;
 
   @IsOptional()
-  @IsIn(PAYMENT_STATUSES as unknown as string[])
-  status?: string; // default 'paid'
+  @BlankAsMissing()
+  @IsEnum(PaymentStatus)
+  status?: PaymentStatus;
 
   @IsOptional()
   @IsString()
