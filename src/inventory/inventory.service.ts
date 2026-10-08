@@ -2,7 +2,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInventoryDto } from './dto/create-inventory.dto';
 import { UpdateInventoryDto } from './dto/update-inventory.dto';
-import { Prisma, InventoryMoveType } from '@prisma/client';
+import { Prisma, Inventory, InventoryMoveType } from '@prisma/client';
 import { INT4_MAX } from '../validation';
 
 @Injectable()
@@ -22,43 +22,23 @@ export class InventoryService {
     return this.prisma.inventory.create({ data });
   }
 
-  // LIST with optional filters; low stock filter applied in memory for simplicity
+  // LIST with optional filters; low stock filter applied in memory for simplicity.
+  // One statement, so a large match set or a concurrent update can't split the search from its rows.
+  // Quantity matches as text, like the old in-memory filter the frontend relies on (q=12 finds 312).
   async findAll(params?: { q?: string; category?: string; low?: boolean }) {
-    const q = params?.q?.trim();
-    const category = params?.category?.trim();
-    const onlyLow = !!params?.low;
-    // The old in-memory filter matched String(quantity) as a substring, and the frontend's
-    // quantity search depends on it. Comparing as text also keeps a 13-digit barcode from overflowing int4.
-    const quantityIds =
-      q && /^[-\d]+$/.test(q)
-        ? (
-            await this.prisma.$queryRaw<{ id: number }[]>`
-              SELECT id FROM "Inventory" WHERE quantity::text LIKE ${`%${q}%`}`
-          ).map((r) => r.id)
-        : [];
+    const q = params?.q?.trim() || null;
+    const category = params?.category?.trim() || null;
+    const pattern = q && `%${q.replace(/[\\%_]/g, '\\$&')}%`;
 
-    const where: Prisma.InventoryWhereInput = {
-      AND: [
-        category ? { category } : undefined,
-        q
-          ? {
-              OR: [
-                { name: { contains: q, mode: 'insensitive' } },
-                { category: { contains: q, mode: 'insensitive' } },
-                { sku: { contains: q, mode: 'insensitive' } },
-                ...(quantityIds.length ? [{ id: { in: quantityIds } }] : []),
-              ],
-            }
-          : undefined,
-      ].filter(Boolean) as Prisma.InventoryWhereInput[],
-    };
+    const items = await this.prisma.$queryRaw<Inventory[]>`
+      SELECT * FROM "Inventory"
+      WHERE (${category}::text IS NULL OR category = ${category})
+        AND (${pattern}::text IS NULL
+          OR name ILIKE ${pattern} OR category ILIKE ${pattern}
+          OR sku ILIKE ${pattern} OR quantity::text LIKE ${pattern})
+      ORDER BY "updatedAt" DESC`;
 
-    const items = await this.prisma.inventory.findMany({
-      where,
-      orderBy: { updatedAt: 'desc' },
-    });
-
-    return onlyLow
+    return params?.low
       ? items.filter((i) => i.quantity <= (i.minThreshold ?? 0))
       : items;
   }
