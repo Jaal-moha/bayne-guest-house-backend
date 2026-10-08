@@ -47,8 +47,8 @@ describe('GET /stats/series', () => {
     expect(stats.series).toHaveBeenCalledWith(14);
   });
 
-  it('rejects a non-numeric days', async () => {
-    await get('/stats/series?days=abc').expect(400);
+  it.each(['abc', ''])('rejects days=%j', async (days) => {
+    await get(`/stats/series?days=${days}`).expect(400);
     expect(stats.series).not.toHaveBeenCalled();
   });
 });
