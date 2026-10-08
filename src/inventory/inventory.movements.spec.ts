@@ -58,6 +58,11 @@ describe('inventory movements over HTTP', () => {
     },
   );
 
+  it('rejects a quantity the column cannot hold', async () => {
+    await post({ type: 'IN', quantity: 3000000000 }).expect(400);
+    expect(service.moveIn).not.toHaveBeenCalled();
+  });
+
   it('rejects an unknown movement type and a fractional quantity', async () => {
     await post({ type: 'LOST', quantity: 1 }).expect(400);
     await post({ type: 'OUT', quantity: 1.5 }).expect(400);
