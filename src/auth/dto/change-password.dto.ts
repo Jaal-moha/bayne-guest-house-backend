@@ -1,4 +1,5 @@
 import { IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { FitsBcrypt } from '../../validation';
 
 export class ChangePasswordDto {
   @IsString()
@@ -7,5 +8,6 @@ export class ChangePasswordDto {
 
   @IsString()
   @MinLength(8)
+  @FitsBcrypt()
   newPassword!: string;
 }

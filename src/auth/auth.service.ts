@@ -41,7 +41,7 @@ export class AuthService {
     if (!user || !(await bcrypt.compare(currentPassword, user.password))) {
       throw new BadRequestException('Current password is incorrect');
     }
-    if (newPassword === currentPassword) {
+    if (await bcrypt.compare(newPassword, user.password)) {
       throw new BadRequestException('New password must differ from the current password');
     }
     await this.users.setPassword(userId, await bcrypt.hash(newPassword, 10));
