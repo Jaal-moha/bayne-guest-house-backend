@@ -95,7 +95,7 @@ model Room {
   id       Int       @id @default(autoincrement())
   number   String    @unique
   type     String
-  price    Float
+  price    Decimal   @db.Decimal(12, 2)
   bookings Booking[]
 }
 
@@ -118,7 +118,7 @@ model Payment {
   bookingId   Int?                @unique // ← optional now
   laundryId   Int?                @unique // ← NEW optional 1-1
   guestId     Int                 // ← NEW required guest link
-  amount      Float
+  amount      Decimal             @db.Decimal(12, 2)
   method      PaymentMethod
   status      PaymentStatus       @default(paid)
   description String?
@@ -147,7 +147,7 @@ model Laundry {
   guestId   Int
   items     String
   status    LaundryStatus @default(pending)
-  price     Float    @default(0) // ← NEW price per laundry
+  price     Decimal  @default(0) @db.Decimal(12, 2)
   createdAt DateTime @default(now())
 
   guest   Guest   @relation(fields: [guestId], references: [id])

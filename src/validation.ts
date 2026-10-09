@@ -1,4 +1,5 @@
 import { Transform } from 'class-transformer';
+import { ValidateBy } from 'class-validator';
 import { ValidationPipeOptions } from '@nestjs/common';
 
 export const validationPipeOptions: ValidationPipeOptions = {
@@ -20,3 +21,20 @@ export const BlankAsMissing = () =>
 
 // Postgres INT4, which every Int column in the schema is.
 export const INT4_MAX = 2_147_483_647;
+
+// Every money column is DECIMAL(12,2). Postgres rounds extra decimals (0.001 becomes 0.00)
+// and fails with a 500 at 1e10 or more, so both get a 400 here.
+// Not @IsNumber({ maxDecimalPlaces: 2 }): it throws on values that print in exponent form, like 1e-7.
+export const MONEY_LIMIT = 1e10;
+export const IsMoney = () =>
+  ValidateBy({
+    name: 'isMoney',
+    validator: {
+      validate: (value: unknown) =>
+        typeof value === 'number' &&
+        Math.abs(value) < MONEY_LIMIT &&
+        Number(value.toFixed(2)) === value,
+      defaultMessage: () =>
+        `$property must be a number with at most 2 decimal places, below 10,000,000,000`,
+    },
+  });
