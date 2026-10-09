@@ -46,12 +46,14 @@ export class AttendanceScanController {
   private async hasValidToken(req: Request): Promise<boolean> {
     const token = req.headers.authorization?.replace(/^bearer\s+/i, '');
     if (!token) return false;
+    let payload: { sub?: unknown };
     try {
-      await this.sessions.validate(await this.jwt.verifyAsync(token));
-      return true;
+      payload = await this.jwt.verifyAsync(token);
     } catch {
       return false;
     }
+    await this.sessions.validate(payload);
+    return true;
   }
 
   @Post('scan')
