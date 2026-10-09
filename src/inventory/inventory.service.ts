@@ -5,6 +5,9 @@ import { UpdateInventoryDto } from './dto/update-inventory.dto';
 import { Prisma, Inventory, InventoryMoveType } from '@prisma/client';
 import { INT4_MAX } from '../validation';
 
+// Removing an item archives it so its movements survive. Every read and write below sees only active items.
+const active = { archivedAt: null } as const;
+
 @Injectable()
 export class InventoryService {
   constructor(private prisma: PrismaService) {}
@@ -32,7 +35,8 @@ export class InventoryService {
 
     const items = await this.prisma.$queryRaw<Inventory[]>`
       SELECT * FROM "Inventory"
-      WHERE (${category}::text IS NULL OR category = ${category})
+      WHERE "archivedAt" IS NULL
+        AND (${category}::text IS NULL OR category = ${category})
         AND (${pattern}::text IS NULL
           OR name ILIKE ${pattern} OR category ILIKE ${pattern}
           OR sku ILIKE ${pattern} OR quantity::text LIKE ${pattern})
@@ -44,7 +48,7 @@ export class InventoryService {
   }
 
   async findOne(id: number) {
-    const item = await this.prisma.inventory.findUnique({ where: { id } });
+    const item = await this.prisma.inventory.findFirst({ where: { id, ...active } });
     if (!item) throw new NotFoundException('Item not found');
     return item;
   }
@@ -61,11 +65,11 @@ export class InventoryService {
       ...(dto.quantity !== undefined ? { quantity: dto.quantity } : {}),
     };
 
-    return this.prisma.inventory.update({ where: { id }, data });
+    return this.prisma.inventory.update({ where: { id, ...active }, data });
   }
 
   async remove(id: number) {
-    return this.prisma.inventory.delete({ where: { id } });
+    return this.prisma.inventory.update({ where: { id, ...active }, data: { archivedAt: new Date() } });
   }
 
   // --- Stock Movements ---
@@ -76,11 +80,11 @@ export class InventoryService {
     }
     return this.prisma.$transaction(async (tx) => {
       const { count } = await tx.inventory.updateMany({
-        where: { id, quantity: { lte: INT4_MAX - quantity } },
+        where: { id, ...active, quantity: { lte: INT4_MAX - quantity } },
         data: { quantity: { increment: quantity } },
       });
       if (count === 0) {
-        if (!(await tx.inventory.findUnique({ where: { id } }))) throw new NotFoundException('Item not found');
+        if (!(await tx.inventory.findFirst({ where: { id, ...active } }))) throw new NotFoundException('Item not found');
         throw new BadRequestException(`Stock cannot exceed ${INT4_MAX}`);
       }
       const updated = await tx.inventory.findUniqueOrThrow({ where: { id } });
@@ -104,11 +108,11 @@ export class InventoryService {
     }
     return this.prisma.$transaction(async (tx) => {
       const { count } = await tx.inventory.updateMany({
-        where: { id, quantity: { gte: quantity } },
+        where: { id, ...active, quantity: { gte: quantity } },
         data: { quantity: { decrement: quantity } },
       });
       if (count === 0) {
-        if (!(await tx.inventory.findUnique({ where: { id } }))) throw new NotFoundException('Item not found');
+        if (!(await tx.inventory.findFirst({ where: { id, ...active } }))) throw new NotFoundException('Item not found');
         throw new BadRequestException('Insufficient stock');
       }
       const updated = await tx.inventory.findUniqueOrThrow({ where: { id } });
@@ -132,7 +136,7 @@ export class InventoryService {
       throw new BadRequestException('Quantity must be a non-negative number');
     }
     return this.prisma.$transaction(async (tx) => {
-      const { count } = await tx.inventory.updateMany({ where: { id }, data: { quantity: newQuantity } });
+      const { count } = await tx.inventory.updateMany({ where: { id, ...active }, data: { quantity: newQuantity } });
       if (count === 0) throw new NotFoundException('Item not found');
       const updated = await tx.inventory.findUniqueOrThrow({ where: { id } });
 
@@ -150,7 +154,7 @@ export class InventoryService {
   }
 
   async movements(id: number, limit = 100) {
-    const item = await this.prisma.inventory.findUnique({ where: { id } });
+    const item = await this.prisma.inventory.findFirst({ where: { id, ...active } });
     if (!item) throw new NotFoundException('Item not found');
 
     return this.prisma.inventoryMovement.findMany({
