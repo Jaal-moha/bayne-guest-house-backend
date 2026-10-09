@@ -6,6 +6,8 @@ import { PassportModule } from '@nestjs/passport';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { JwtStrategy } from '../auth/jwt.strategy';
+import { fakeUsers } from '../auth/fake-users';
+import { UsersService } from '../users/users.service';
 import { StatsController } from './stats.controller';
 import { StatsService } from './stats.service';
 
@@ -14,11 +16,13 @@ process.env.JWT_SECRET = 'stats-test-secret';
 describe('GET /stats/series', () => {
   let app: INestApplication;
   const stats = { series: jest.fn().mockResolvedValue([]) };
+  const users = fakeUsers();
+  const admin = users.add({ role: 'admin' });
   const jwt = new JwtService({ secret: 'stats-test-secret' });
   const get = (path: string) =>
     request(app.getHttpServer())
       .get(path)
-      .set('Authorization', `Bearer ${jwt.sign({ sub: 1, role: 'admin' })}`);
+      .set('Authorization', `Bearer ${jwt.sign({ sub: admin })}`);
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -27,6 +31,7 @@ describe('GET /stats/series', () => {
       providers: [
         JwtStrategy,
         ConfigService,
+        { provide: UsersService, useValue: users.service },
         { provide: StatsService, useValue: stats },
       ],
     }).compile();
