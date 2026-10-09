@@ -9,8 +9,10 @@ export function fakeUsers() {
       findById: async (id: number) => rows.get(id) ?? null,
       findByEmail: async (email: string) =>
         [...rows.values()].find((user) => user.email === email) ?? null,
-      setPassword: async (id: number, password: string) => {
+      setPassword: async (id: number, currentHash: string, password: string) => {
+        if (rows.get(id)?.password !== currentHash) return false;
         rows.set(id, { ...rows.get(id)!, password, forceChangePassword: false });
+        return true;
       },
     },
     add(fields: Partial<User> & { role: Role }): number {

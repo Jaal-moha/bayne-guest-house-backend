@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import * as bcrypt from 'bcryptjs';
@@ -44,6 +44,8 @@ export class AuthService {
     if (await bcrypt.compare(newPassword, user.password)) {
       throw new BadRequestException('New password must differ from the current password');
     }
-    await this.users.setPassword(userId, await bcrypt.hash(newPassword, 10));
+    if (!(await this.users.setPassword(userId, user.password, await bcrypt.hash(newPassword, 10)))) {
+      throw new ConflictException('Password was changed by another request. Try again');
+    }
   }
 }
