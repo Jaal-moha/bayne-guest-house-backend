@@ -9,11 +9,12 @@ Front desk and finance record payments against a booking, a laundry order, or a 
 - `pay-other` creates a DINING or OTHER payment, which requires `guestId` and a positive `amount`.
 - `laundry-create` creates a laundry order and, in the same transaction, a `LAUNDRY` payment with `status=paid`, `method=cash` and `amount=price`.
 - `laundry-status` moves an order through `pending`, `in_progress` and `done`.
+- `laundry-delete` deletes an order and its payment. It returns 409 while the payment is `paid`. Refund it with `PATCH /payments/:id` first.
 
 ## How to get to it (user POV)
 
 - `POST /payments`, `GET /payments`, `GET /payments/:id`, `PATCH /payments/:id`, `DELETE /payments/:id` (admin, finance, manager or reception).
-- `POST /laundry` (admin, housekeeping, reception or manager), `PATCH /laundry/:id/status` (admin, housekeeping or manager), and `GET /laundry?status=&q=&guestId=`.
+- `POST /laundry` (admin, housekeeping, reception or manager), `PATCH /laundry/:id/status` (admin, housekeeping or manager), `DELETE /laundry/:id` (admin or manager), and `GET /laundry?status=&q=&guestId=`.
 
 ## Driving it with control.sh
 
@@ -29,6 +30,8 @@ Preconditions:
 - **Laundry order.** Run `$S call --expect 201 housekeeping POST /laundry "{\"guestId\":$GUEST,\"items\":\"2x towels\",\"price\":120}"` and `LAUNDRY=$($S last .id)`. `$S last .status` prints `pending`.
 - **Auto payment side effect.** Run `$S sql "select \"serviceType\", status, method, amount from \"Payment\" where \"laundryId\" = $LAUNDRY"`. It prints `LAUNDRY|paid|cash|120`.
 - **Status flow.** Run `$S call --expect 200 housekeeping PATCH /laundry/$LAUNDRY/status '{"status":"done"}'`, then `$S call --expect 400 housekeeping PATCH /laundry/$LAUNDRY/status '{"status":"lost"}'`.
+- **Delete refused while paid.** Run `$S call --expect 409 manager DELETE /laundry/$LAUNDRY`. Both the `Laundry` row and its `Payment` row remain.
+- **Delete after refund.** Run `PAY=$($S sql "select id from \"Payment\" where \"laundryId\" = $LAUNDRY" | sed -n 2p)`, then `$S call --expect 200 finance PATCH /payments/$PAY '{"status":"refunded"}'` and `$S call --expect 200 manager DELETE /laundry/$LAUNDRY`. Both rows are gone.
 
 ## Gotchas
 

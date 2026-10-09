@@ -1,4 +1,8 @@
-import { BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -56,6 +60,77 @@ describe('laundry payment ownership', () => {
       } as never),
     ).rejects.toThrow(BadRequestException);
     expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  describe('deleting a laundry order', () => {
+    const removal = (payment: { status: string } | null) => {
+      const tx = {
+        payment: {
+          deleteMany: jest.fn().mockResolvedValue({
+            count: payment && payment.status !== 'paid' ? 1 : 0,
+          }),
+        },
+        laundry: {
+          findUnique: jest.fn().mockResolvedValue({
+            payment: payment?.status === 'paid' ? { status: 'paid' } : null,
+          }),
+          delete: jest.fn().mockResolvedValue({ id: 5 }),
+        },
+      };
+      const prisma = {
+        laundry: { delete: jest.fn().mockResolvedValue({ id: 5 }) },
+        $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
+      };
+      return {
+        prisma,
+        tx,
+        service: new LaundryService(prisma as unknown as PrismaService),
+      };
+    };
+
+    it('refuses with 409 and deletes nothing while the payment is paid', async () => {
+      const { prisma, tx, service } = removal({ status: 'paid' });
+      const attempt = service.remove(5);
+      await expect(attempt).rejects.toThrow(ConflictException);
+      await expect(attempt).rejects.toThrow(/refund/i);
+      expect(prisma.laundry.delete).not.toHaveBeenCalled();
+      expect(tx.laundry.delete).not.toHaveBeenCalled();
+    });
+
+    it('guards the payment delete on its status in the same statement, so a payment marked paid mid-request survives', async () => {
+      const { tx, service } = removal({ status: 'unpaid' });
+      await service.remove(5);
+      expect(tx.payment.deleteMany).toHaveBeenCalledWith({
+        where: { laundryId: 5, status: { not: 'paid' } },
+      });
+    });
+
+    it.each(['unpaid', 'refunded', 'failed'])(
+      'deletes the order and its %s payment',
+      async (status) => {
+        const { tx, service } = removal({ status });
+        await expect(service.remove(5)).resolves.toEqual({ id: 5 });
+        expect(tx.laundry.delete).toHaveBeenCalledWith({ where: { id: 5 } });
+      },
+    );
+
+    it('refuses with 409 and deletes nothing when a refund commits between the guarded delete and the read', async () => {
+      const { tx, service } = removal({ status: 'paid' });
+      tx.laundry.findUnique.mockResolvedValue({
+        payment: { status: 'refunded' },
+      });
+      const attempt = service.remove(5);
+      await expect(attempt).rejects.toThrow(ConflictException);
+      await expect(attempt).rejects.toThrow(/try again/i);
+      expect(tx.laundry.delete).not.toHaveBeenCalled();
+    });
+
+    it('answers 404 for an order that does not exist', async () => {
+      const { tx, service } = removal(null);
+      tx.laundry.findUnique.mockResolvedValue(null);
+      await expect(service.remove(5)).rejects.toThrow(NotFoundException);
+      expect(tx.laundry.delete).not.toHaveBeenCalled();
+    });
   });
 
   describe('a laundry payment through /payments', () => {
