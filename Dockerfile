@@ -23,4 +23,4 @@ EXPOSE 3000
 CMD ["npm", "run", "start:prod"]
 
 HEALTHCHECK  --interval=5m --timeout=3s \
-  CMD curl --fail --silent http://localhost:3000/health/ || exit 1
+  CMD curl --fail --silent "http://localhost:${PORT:-3000}/health/" || exit 1
