@@ -7,7 +7,7 @@ describe('InventoryService stock changes', () => {
     const tx = {
       inventory: {
         updateMany: jest.fn().mockResolvedValue({ count }),
-        findUnique: jest
+        findFirst: jest
           .fn()
           .mockResolvedValue(found ? { id: 3, quantity: 0 } : null),
         findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 3, quantity: 4 }),
@@ -27,7 +27,7 @@ describe('InventoryService stock changes', () => {
     const { tx, service } = make(true, 1);
     await service.moveOut(3, 2, 'bar');
     expect(tx.inventory.updateMany).toHaveBeenCalledWith({
-      where: { id: 3, quantity: { gte: 2 } },
+      where: { id: 3, archivedAt: null, quantity: { gte: 2 } },
       data: { quantity: { decrement: 2 } },
     });
   });
@@ -41,8 +41,9 @@ describe('InventoryService stock changes', () => {
   it('adds stock in one statement and reports a missing item as 404', async () => {
     const { tx, service } = make(false, 0);
     await expect(service.moveIn(3, 2)).rejects.toThrow(NotFoundException);
+    expect(tx.inventory.findFirst).toHaveBeenCalledWith({ where: { id: 3, archivedAt: null } });
     expect(tx.inventory.updateMany).toHaveBeenCalledWith({
-      where: { id: 3, quantity: { lte: 2147483647 - 2 } },
+      where: { id: 3, archivedAt: null, quantity: { lte: 2147483647 - 2 } },
       data: { quantity: { increment: 2 } },
     });
     expect(tx.inventoryMovement.create).not.toHaveBeenCalled();
@@ -58,7 +59,7 @@ describe('InventoryService stock changes', () => {
     const { tx, service } = make(false, 0);
     await expect(service.adjust(3, 5)).rejects.toThrow(NotFoundException);
     expect(tx.inventory.updateMany).toHaveBeenCalledWith({
-      where: { id: 3 },
+      where: { id: 3, archivedAt: null },
       data: { quantity: 5 },
     });
     expect(tx.inventoryMovement.create).not.toHaveBeenCalled();
@@ -69,7 +70,7 @@ describe('InventoryService reads', () => {
   const prisma = {
     inventory: {
       findMany: jest.fn().mockResolvedValue([]),
-      findUnique: jest.fn().mockResolvedValue({ id: 3 }),
+      findFirst: jest.fn().mockResolvedValue({ id: 3 }),
     },
     inventoryMovement: { findMany: jest.fn().mockResolvedValue([]) },
     $queryRaw: jest.fn().mockResolvedValue([{ id: 7 }]),
@@ -110,5 +111,56 @@ describe('InventoryService reads', () => {
       { id: 2, quantity: 9, minThreshold: 5 },
     ]);
     expect(await service.findAll({ low: true })).toEqual([{ id: 1, quantity: 2, minThreshold: 5 }]);
+  });
+});
+
+describe('InventoryService archiving', () => {
+  const make = (item: { id: number } | null) => {
+    const prisma = {
+      inventory: {
+        findFirst: jest.fn().mockResolvedValue(item),
+        update: jest.fn().mockResolvedValue(item),
+        delete: jest.fn(),
+      },
+      inventoryMovement: { findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+    };
+    return { prisma, service: new InventoryService(prisma as unknown as PrismaService) };
+  };
+  const active = { id: 3, archivedAt: null };
+
+  it('archives on remove and keeps the row, so its movements survive', async () => {
+    const { prisma, service } = make({ id: 3 });
+    await service.remove(3);
+    expect(prisma.inventory.delete).not.toHaveBeenCalled();
+    expect(prisma.inventory.update).toHaveBeenCalledWith({
+      where: active,
+      data: { archivedAt: expect.any(Date) },
+    });
+  });
+
+  it('answers 404 for an archived item', async () => {
+    const { prisma, service } = make(null);
+    await expect(service.findOne(3)).rejects.toThrow(NotFoundException);
+    expect(prisma.inventory.findFirst).toHaveBeenCalledWith({ where: active });
+  });
+
+  it('answers 404 for the movement history of an archived item', async () => {
+    const { prisma, service } = make(null);
+    await expect(service.movements(3)).rejects.toThrow(NotFoundException);
+    expect(prisma.inventory.findFirst).toHaveBeenCalledWith({ where: active });
+    expect(prisma.inventoryMovement.findMany).not.toHaveBeenCalled();
+  });
+
+  it('edits only an item that is not archived', async () => {
+    const { prisma, service } = make({ id: 3 });
+    await service.update(3, { name: 'Soap' });
+    expect(prisma.inventory.update.mock.calls[0][0].where).toEqual(active);
+  });
+
+  it('lists and searches only items that are not archived', async () => {
+    const { prisma, service } = make(null);
+    await service.findAll({ q: 'soap' });
+    expect(prisma.$queryRaw.mock.calls[0][0].join('?')).toMatch(/"archivedAt" IS NULL/);
   });
 });

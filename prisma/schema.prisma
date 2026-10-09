@@ -159,10 +159,13 @@ model Inventory {
   name         String
   category     String
   unit         String? // e.g. pcs, kg, L
-  sku          String?  @unique
-  quantity     Int      @default(0)
-  minThreshold Int      @default(0) // low-stock trigger
-  updatedAt    DateTime @updatedAt
+  // Unique among unarchived items via the partial index "Inventory_sku_key" (migration 20261009000000).
+  // Prisma 6 ignores partial indexes, so @unique here would make migrate diff re-add a full one.
+  sku          String?
+  quantity     Int       @default(0)
+  minThreshold Int       @default(0) // low-stock trigger
+  updatedAt    DateTime  @updatedAt
+  archivedAt   DateTime?
 
   movements InventoryMovement[]
 }
@@ -178,5 +181,5 @@ model InventoryMovement {
   // userId    Int?
   // user      User? @relation(fields: [userId], references: [id])
 
-  inventory Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  inventory Inventory @relation(fields: [inventoryId], references: [id], onDelete: Restrict)
 }

@@ -50,7 +50,7 @@ export class StatsService {
         this.prisma.guest.count(),
         this.prisma.booking.count(),
         this.prisma.payment.count(),
-        this.prisma.inventory.count(),
+        this.prisma.inventory.count({ where: { archivedAt: null } }),
         this.prisma.staff.count(),
         this.prisma.laundry.count(),
       ]);
@@ -61,6 +61,7 @@ export class StatsService {
     // --- Low stock count (tolerant to missing minThreshold in generated types) ---
     type MaybeInv = { quantity: number; minThreshold?: number | null };
     const lowItems = await (this.prisma.inventory as any).findMany({
+      where: { archivedAt: null },
       select: { quantity: true, minThreshold: true },
     });
     const lowStockCount = (lowItems as MaybeInv[]).filter(
