@@ -71,8 +71,7 @@ describe('laundry payment ownership', () => {
         },
         laundry: {
           findUnique: jest.fn().mockResolvedValue({
-            id: 5,
-            payment: payment?.status === 'paid' ? payment : null,
+            payment: payment?.status === 'paid' ? { status: 'paid' } : null,
           }),
           delete: jest.fn().mockResolvedValue({ id: 5 }),
         },
@@ -113,6 +112,15 @@ describe('laundry payment ownership', () => {
         expect(tx.laundry.delete).toHaveBeenCalledWith({ where: { id: 5 } });
       },
     );
+
+    it('refuses with 409 and deletes nothing when a refund commits between the guarded delete and the read', async () => {
+      const { tx, service } = removal({ status: 'paid' });
+      tx.laundry.findUnique.mockResolvedValue({ payment: { status: 'refunded' } });
+      const attempt = service.remove(5);
+      await expect(attempt).rejects.toThrow(ConflictException);
+      await expect(attempt).rejects.toThrow(/try again/i);
+      expect(tx.laundry.delete).not.toHaveBeenCalled();
+    });
 
     it('answers 404 for an order that does not exist', async () => {
       const { tx, service } = removal(null);
