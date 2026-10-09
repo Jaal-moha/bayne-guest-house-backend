@@ -1,6 +1,6 @@
-import { BlankAsMissing, ToOptionalNumber } from '../../validation';
+import { BlankAsMissing, IsMoney, ToOptionalNumber } from '../../validation';
 import { LaundryStatus } from '@prisma/client';
-import { IsNumber, Min, IsInt, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Min, IsInt, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreateLaundryDto {
   @ToOptionalNumber()
@@ -18,7 +18,7 @@ export class CreateLaundryDto {
 
   @IsOptional()
   @ToOptionalNumber()
-  @IsNumber()
+  @IsMoney()
   @Min(0)
   price?: number;
 }

@@ -22,8 +22,7 @@ export class PaymentsService {
       // No duplicate payment per booking
       if (booking.payment) throw new BadRequestException('Payment already exists for this booking');
 
-      const amount =
-        dto.amount ?? nights(booking.checkIn, booking.checkOut) * (booking.room?.price ?? 0);
+      const amount = dto.amount ?? booking.room.price.mul(nights(booking.checkIn, booking.checkOut));
 
       const payment = await this.prisma.payment.create({
         data: {
@@ -106,7 +105,7 @@ export class PaymentsService {
 
   async update(id: number, dto: UpdatePaymentDto) {
     const laundry = await this.findLaundryPayment(id);
-    if (laundry && dto.amount !== undefined && dto.amount !== laundry.amount) {
+    if (laundry && dto.amount !== undefined && !laundry.amount.equals(dto.amount)) {
       throw new BadRequestException('Laundry payments follow their order. Change the price on the laundry order instead');
     }
     return this.prisma.payment.update({

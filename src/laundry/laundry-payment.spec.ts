@@ -3,6 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
 import { LaundryService } from './laundry.service';
@@ -137,7 +138,7 @@ describe('laundry payment ownership', () => {
       payment: {
         findUnique: jest
           .fn()
-          .mockResolvedValue({ id: 7, serviceType: 'LAUNDRY', amount: 120 }),
+          .mockResolvedValue({ id: 7, serviceType: 'LAUNDRY', amount: new Prisma.Decimal(120) }),
         update: jest.fn(),
         delete: jest.fn(),
       },
@@ -168,12 +169,12 @@ describe('laundry payment ownership', () => {
       prisma.payment.findUnique.mockResolvedValueOnce({
         id: 8,
         serviceType: 'DINING',
-        amount: 250,
+        amount: new Prisma.Decimal(250),
       });
       prisma.payment.findUnique.mockResolvedValueOnce({
         id: 8,
         serviceType: 'DINING',
-        amount: 300,
+        amount: new Prisma.Decimal(300),
       });
       await payments.update(8, { amount: 300 });
       await payments.remove(8);

@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcryptjs';
 import { Prisma } from '@prisma/client';
@@ -6,6 +6,12 @@ import { UpdateStaffDto } from './dto/update-staff.dto';
 import { CreateStaffDto } from './dto/create-staff.dto';
 
 const USER_FIELDS = { select: { id: true, email: true, role: true, staffId: true, name: true } };
+const BARCODE_ATTEMPTS = 5;
+
+const isUniqueViolationOn = (err: unknown, field: string) =>
+  err instanceof Prisma.PrismaClientKnownRequestError &&
+  err.code === 'P2002' &&
+  [err.meta?.target].flat().some((t) => String(t).includes(field));
 
 @Injectable()
 export class StaffService {
@@ -16,30 +22,29 @@ export class StaffService {
     try {
       return await work();
     } catch (err) {
-      if (
-        err instanceof Prisma.PrismaClientKnownRequestError &&
-        err.code === 'P2002' &&
-        [err.meta?.target].flat().some((t) => String(t).includes('email'))
-      ) {
+      if (isUniqueViolationOn(err, 'email')) {
         throw new ConflictException('User with that username/email already exists');
       }
       throw err;
     }
   }
 
-  private async generateUniqueBarcode(): Promise<string> {
-    for (let i = 0; i < 20; i++) {
-      const code = `EMP-${Math.floor(100000 + Math.random() * 900000)}`;
-      const exists = await this.prisma.staff.findUnique({ where: { barcode: code } });
-      if (!exists) return code;
-    }
-    return `EMP-${Date.now().toString().slice(-6)}`;
-  }
-
   async create(dto: CreateStaffDto) {
-    const barcode = await this.generateUniqueBarcode();
     const hashed = dto.username && dto.password ? await bcrypt.hash(dto.password, 10) : null;
 
+    // A failed insert aborts the Postgres transaction (25P02), so a barcode collision retries the whole transaction.
+    for (let attempt = 0; attempt < BARCODE_ATTEMPTS; attempt++) {
+      const barcode = `EMP-${Math.floor(100000 + Math.random() * 900000)}`;
+      try {
+        return await this.createWithBarcode(dto, barcode, hashed);
+      } catch (err) {
+        if (!isUniqueViolationOn(err, 'barcode')) throw err;
+      }
+    }
+    throw new ServiceUnavailableException('Could not allocate a unique staff barcode, try again');
+  }
+
+  private async createWithBarcode(dto: CreateStaffDto, barcode: string, hashed: string | null) {
     const created = await this.conflictOnTakenEmail(() =>
       this.prisma.$transaction(async (tx) => {
         const staff = await tx.staff.create({

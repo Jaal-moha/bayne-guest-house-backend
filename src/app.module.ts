@@ -14,8 +14,9 @@ import { StatsModule } from './stats/stats.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { PrismaNotFoundFilter } from './prisma/prisma-not-found.filter';
+import { DecimalToNumberInterceptor } from './prisma/decimal-to-number.interceptor';
 
 @Module({
   imports: [
@@ -34,6 +35,10 @@ import { PrismaNotFoundFilter } from './prisma/prisma-not-found.filter';
     StatsModule,
   ],
   controllers: [AppController],
-  providers: [AppService, { provide: APP_FILTER, useClass: PrismaNotFoundFilter }],
+  providers: [
+    AppService,
+    { provide: APP_FILTER, useClass: PrismaNotFoundFilter },
+    { provide: APP_INTERCEPTOR, useClass: DecimalToNumberInterceptor },
+  ],
 })
 export class AppModule {}

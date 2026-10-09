@@ -1,11 +1,11 @@
-import { BlankAsMissing, ToOptionalNumber } from '../../validation';
+import { BlankAsMissing, IsMoney, ToOptionalNumber } from '../../validation';
 import { PaymentMethod, PaymentStatus } from '@prisma/client';
-import { IsEnum, IsNumber, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdatePaymentDto {
   @IsOptional()
   @ToOptionalNumber()
-  @IsNumber()
+  @IsMoney()
   amount?: number;
 
   @IsOptional()
