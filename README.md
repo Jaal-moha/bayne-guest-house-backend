@@ -73,7 +73,8 @@ The planned production setup runs the Docker image on the owner's machine, with 
 
 ```bash
 docker build -t bayne-backend .
-docker run -d --restart unless-stopped -p 3000:3000 \
+docker run -d --name bayne-backend --init --restart unless-stopped \
+  -p 127.0.0.1:3000:3000 \
   -e DATABASE_URL=postgresql://... \
   -e DIRECT_URL=postgresql://... \
   -e JWT_SECRET=... \
@@ -84,9 +85,23 @@ docker run -d --restart unless-stopped -p 3000:3000 \
 
 `DATABASE_URL` and `DIRECT_URL` usually hold the same connection string. Prisma runs migrations over `DIRECT_URL`, so it must bypass any connection pooler. `ALLOWED_ORIGINS` is a JSON array of frontend origins. Set `ATTENDANCE_API_KEY` too if the attendance scanner authenticates with `x-api-key`.
 
-The container runs `npm run start:prod`, which applies pending migrations with `prisma migrate deploy` and then starts the server. If a migration fails, the process exits non-zero before the server starts, and Docker restarts it under the restart policy. Read the error with `docker logs`.
+`-p 127.0.0.1:3000:3000` publishes the API on the host's loopback only, so other machines on the LAN can't reach it and all outside traffic comes through the tunnel. `--init` runs a small init process as PID 1 that reaps zombie processes and forwards signals.
 
-In the tunnel, route the public hostname to the port the container publishes on the host, `http://localhost:3000` in the example above.
+The container runs `npm run start:prod`, which applies pending migrations with `prisma migrate deploy` and then starts the server. If a migration fails, the process exits non-zero before the server starts. Read the error with `docker logs bayne-backend`.
+
+Prisma records a failed migration in `_prisma_migrations`. Every later start then stops at error P3009, so the container restarts in a loop until someone resolves it. To recover, check what the migration left in the database and fix it by hand. Then mark the migration, using the same image and the same `-e` flags:
+
+```bash
+docker run --rm -e DATABASE_URL=... -e DIRECT_URL=... bayne-backend \
+  npx prisma migrate resolve --rolled-back <migration_name>
+```
+
+Use `--rolled-back` if you undid the migration's changes. The next start runs it again, so rebuild the image with a fixed migration first. Use `--applied` if you finished the migration by hand. `docker logs` shows the migration name.
+
+Point the tunnel's public hostname at the API:
+
+- cloudflared runs on the host: use `http://localhost:3000`.
+- cloudflared runs in a container: `localhost` there is the cloudflared container itself. Put both containers on one user-defined network (`docker network create bayne`, then `--network bayne` on both `docker run` commands) and use `http://bayne-backend:3000`. Docker resolves the container name on that network. The `-p` flag isn't needed in this case.
 
 ## Resources
 
