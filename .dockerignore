@@ -3,3 +3,10 @@ dist
 *.log
 *.md
 .git
+# COPY . . would bake these local secrets and evidence into the image.
+**/.env
+**/.env.*
+.verify
+.claude
+public/staff-ids
+coverage
