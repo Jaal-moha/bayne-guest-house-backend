@@ -1,17 +1,28 @@
 import { ConflictException } from '@nestjs/common';
-import { PaymentMethod, PaymentServiceType, PaymentStatus, PrismaClient } from '@prisma/client';
+import {
+  PaymentMethod,
+  PaymentServiceType,
+  PaymentStatus,
+  PrismaClient,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LaundryService } from './laundry.service';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
-  throw new Error('Integration tests need DATABASE_URL pointing at a migrated Postgres database.');
+  throw new Error(
+    'Integration tests need DATABASE_URL pointing at a migrated Postgres database.',
+  );
 }
 
 // The remover's transaction runs on whichever pooled connection Prisma hands it, and the
 // test cannot run a query inside it to learn its pid. Tagging every connection the remover
 // client opens with a unique application_name identifies it whatever the pool size.
-async function waitUntilBlockedBy(observer: PrismaClient, applicationName: string, blockerPid: number) {
+async function waitUntilBlockedBy(
+  observer: PrismaClient,
+  applicationName: string,
+  blockerPid: number,
+) {
   const deadline = Date.now() + 2000;
   while (Date.now() < deadline) {
     const [{ blocked }] = await observer.$queryRaw<{ blocked: boolean }[]>`
@@ -30,19 +41,27 @@ describe('LaundryService.remove against Postgres', () => {
   const name = `laundry-race-${Date.now()}`;
   const removerUrl = new URL(databaseUrl);
   removerUrl.searchParams.set('application_name', name);
-  const prisma = new PrismaService({ datasources: { db: { url: removerUrl.toString() } } });
+  const prisma = new PrismaService({
+    datasources: { db: { url: removerUrl.toString() } },
+  });
   const payer = new PrismaClient();
   const observer = new PrismaClient();
   const service = new LaundryService(prisma);
 
-  beforeAll(() => Promise.all([prisma.$connect(), payer.$connect(), observer.$connect()]));
+  beforeAll(() =>
+    Promise.all([prisma.$connect(), payer.$connect(), observer.$connect()]),
+  );
   afterAll(async () => {
     try {
       await prisma.payment.deleteMany({ where: { guest: { name } } });
       await prisma.laundry.deleteMany({ where: { guest: { name } } });
       await prisma.guest.deleteMany({ where: { name } });
     } finally {
-      await Promise.all([prisma.$disconnect(), payer.$disconnect(), observer.$disconnect()]);
+      await Promise.all([
+        prisma.$disconnect(),
+        payer.$disconnect(),
+        observer.$disconnect(),
+      ]);
     }
   });
 
@@ -70,8 +89,13 @@ describe('LaundryService.remove against Postgres', () => {
 
     const payerTx = payer.$transaction(
       async (tx) => {
-        [{ pid: payerPid }] = await tx.$queryRaw<{ pid: number }[]>`select pg_backend_pid() as pid`;
-        await tx.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.paid } });
+        [{ pid: payerPid }] = await tx.$queryRaw<
+          { pid: number }[]
+        >`select pg_backend_pid() as pid`;
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: { status: PaymentStatus.paid },
+        });
         markedPaid();
         await committing;
       },
@@ -93,8 +117,12 @@ describe('LaundryService.remove against Postgres', () => {
 
     await payerTx;
     expect(await removal).toBeInstanceOf(ConflictException);
-    expect(await prisma.laundry.findUnique({ where: { id: laundry.id } })).not.toBeNull();
-    expect(await prisma.payment.findUnique({ where: { id: payment.id } })).toMatchObject({
+    expect(
+      await prisma.laundry.findUnique({ where: { id: laundry.id } }),
+    ).not.toBeNull();
+    expect(
+      await prisma.payment.findUnique({ where: { id: payment.id } }),
+    ).toMatchObject({
       status: PaymentStatus.paid,
     });
   });

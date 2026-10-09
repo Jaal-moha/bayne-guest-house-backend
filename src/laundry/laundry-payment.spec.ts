@@ -115,7 +115,9 @@ describe('laundry payment ownership', () => {
 
     it('refuses with 409 and deletes nothing when a refund commits between the guarded delete and the read', async () => {
       const { tx, service } = removal({ status: 'paid' });
-      tx.laundry.findUnique.mockResolvedValue({ payment: { status: 'refunded' } });
+      tx.laundry.findUnique.mockResolvedValue({
+        payment: { status: 'refunded' },
+      });
       const attempt = service.remove(5);
       await expect(attempt).rejects.toThrow(ConflictException);
       await expect(attempt).rejects.toThrow(/try again/i);
