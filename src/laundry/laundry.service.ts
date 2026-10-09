@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { LaundryStatus, Prisma } from '@prisma/client';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { LaundryStatus, PaymentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLaundryDto } from './dto/create-laundry.dto';
 import { UpdateLaundryDto } from './dto/update-laundry.dto';
@@ -121,6 +121,30 @@ export class LaundryService {
   }
 
   remove(id: number) {
-    return this.prisma.laundry.delete({ where: { id } });
+    return this.prisma.$transaction(async (tx) => {
+      // Postgres re-checks a DELETE's WHERE against a row a concurrent request just
+      // updated, so a payment marked paid mid-request is skipped here, not deleted.
+      await tx.payment.deleteMany({
+        where: { laundryId: id, status: { not: PaymentStatus.paid } },
+      });
+      const laundry = await tx.laundry.findUnique({
+        where: { id },
+        select: { payment: { select: { status: true } } },
+      });
+      if (!laundry) throw new NotFoundException('Laundry not found');
+      if (laundry.payment?.status === PaymentStatus.paid) {
+        throw new ConflictException(
+          'This laundry order is paid. Refund its payment first, then delete the order.',
+        );
+      }
+      // A refund committed after the guarded delete above. Deleting the order now would
+      // cascade to the payment without the status guard, so refuse and let the user retry.
+      if (laundry.payment) {
+        throw new ConflictException(
+          'The payment for this laundry order changed while deleting it. Try again.',
+        );
+      }
+      return tx.laundry.delete({ where: { id } });
+    });
   }
 }
