@@ -98,7 +98,7 @@ EOF
   (cd "$ROOT" && DATABASE_URL="$db_url" DIRECT_URL="$db_url" npx prisma db seed >>"$log" 2>&1) || die "seed log=$log"
   (cd "$ROOT" && npm run build >>"$log" 2>&1) || die "build log=$log"
 
-  (cd "$ROOT" && exec env DATABASE_URL="$db_url" DIRECT_URL="$db_url" PORT="$app_port" \
+  (cd "$ROOT" && exec env DATABASE_URL="$db_url" DIRECT_URL="$db_url" PORT="$app_port" HOST=127.0.0.1 \
     JWT_SECRET=verify-jwt-secret ATTENDANCE_API_KEY=verify-attendance-key \
     nohup node dist/src/main >"$RUN_DIR/server.log" 2>&1) &
   echo "SERVER_PID=$!" >>"$STATE"
@@ -167,12 +167,14 @@ cmd_call() {
   [[ "$code" == 000 ]] && die "http-unreachable base=$BASE_URL (dead, cut off, or slower than 30s; see $RUN_DIR/curl.log and run 'control.sh doctor')"
   local seq; seq=$(( $(find "$EVIDENCE_DIR" -maxdepth 1 -name '*.json' | wc -l) + 1 ))
   local file; file="$EVIDENCE_DIR/$(printf '%03d' "$seq")-$who-$method-$(echo "$path" | tr -c 'a-zA-Z0-9\n' '_' | cut -c2-60).json"
-  local resp
-  if [[ ! -s "$RUN_DIR/last.body" ]]; then resp=null
-  elif ! resp="$(jq -c . "$RUN_DIR/last.body" 2>/dev/null)"; then resp="$(jq -Rsc . "$RUN_DIR/last.body")"; fi
+  # The body goes through a file because a large one passed as an argument exceeds the kernel's argument limit.
+  local resp="$RUN_DIR/last.resp"
+  if [[ ! -s "$RUN_DIR/last.body" ]]; then echo null >"$resp"
+  elif ! jq -c . "$RUN_DIR/last.body" >"$resp" 2>/dev/null; then jq -Rsc . "$RUN_DIR/last.body" >"$resp"; fi
   local hdrs; hdrs="$(printf '%s\n' "${EXTRA_HEADERS[@]}" | jq -Rsc 'split("\n")|map(select(length>0))')"
-  jq -n --arg who "$who" --arg m "$method" --arg p "$path" --arg b "$body" --argjson h "$hdrs" --argjson s "$code" --argjson r "$resp" \
-    --arg at "$(date -u +%FT%TZ)" '{at:$at, request:{as:$who, method:$m, path:$p, headers:$h, body:($b|fromjson? // $b)}, response:{status:$s, body:$r}}' >"$file"
+  jq -n --arg who "$who" --arg m "$method" --arg p "$path" --arg b "$body" --argjson h "$hdrs" --argjson s "$code" --slurpfile r "$resp" \
+    --arg at "$(date -u +%FT%TZ)" '{at:$at, request:{as:$who, method:$m, path:$p, headers:$h, body:($b|fromjson? // $b)}, response:{status:$s, body:$r[0]}}' >"$file" ||
+    { rm -f "$file"; die "write-evidence file=$file"; }
   cp "$file" "$RUN_DIR/last.json"
   echo "HTTP $code"
   echo "EVIDENCE $file"
@@ -194,7 +196,8 @@ cmd_sql() {
   local out; out="$(psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -d bgh -At -F '|' -v ON_ERROR_STOP=1 -c "$q" 2>&1)" || die "sql $out"
   local seq; seq=$(( $(find "$EVIDENCE_DIR" -maxdepth 1 -name '*.json' | wc -l) + 1 ))
   local file; file="$EVIDENCE_DIR/$(printf '%03d' "$seq")-sql.json"
-  jq -n --arg q "$q" --arg o "$out" --arg at "$(date -u +%FT%TZ)" '{at:$at, sql:$q, rows:($o|split("\n"))}' >"$file"
+  printf '%s' "$out" | jq -Rs --arg q "$q" --arg at "$(date -u +%FT%TZ)" '{at:$at, sql:$q, rows:split("\n")}' >"$file" ||
+    { rm -f "$file"; die "write-evidence file=$file"; }
   echo "EVIDENCE $file"
   echo "$out"
 }

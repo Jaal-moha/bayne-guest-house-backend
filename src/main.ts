@@ -1,7 +1,7 @@
 import { validationPipeOptions } from './validation';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
-import { serverConfig } from './env';
+import { envValue, serverConfig } from './env';
 import { AppModule } from './app.module'; import { ValidationPipe } from '@nestjs/common';
 
 
@@ -20,7 +20,8 @@ async function bootstrap() {
   });
   app.useGlobalPipes(new ValidationPipe(validationPipeOptions));
 
-  await app.listen(port);
+  const host = envValue(app.get(ConfigService), 'HOST');
+  await (host ? app.listen(port, host) : app.listen(port));
   console.log(`Backend running at http://localhost:${port}`);
 }
 bootstrap();
