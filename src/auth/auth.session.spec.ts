@@ -48,18 +48,32 @@ describe('JWT sessions follow the user row', () => {
 
     await http().post('/rooms').set('Authorization', token).send(room).expect(201);
 
-    users.update(id, { role: 'reception' });
+    users.update(id, { role: 'reception', email: 'sara.t@example.com', name: 'Sara T' });
     await http().post('/rooms').set('Authorization', token).send(room).expect(403);
     const me = await http().get('/auth/me').set('Authorization', token).expect(200);
     expect(me.body).toEqual({
       user: {
         userId: id,
-        email: 'sara@example.com',
+        email: 'sara.t@example.com',
         role: 'reception',
-        name: 'Sara',
+        name: 'Sara T',
         forceChangePassword: false,
       },
     });
+  });
+
+  it('reports a failed user lookup on the scan as a server error, not bad credentials', async () => {
+    const id = users.add({ role: 'security' });
+    const token = `Bearer ${jwt.sign({ sub: id, role: 'security' })}`;
+    const findById = users.service.findById;
+    users.service.findById = async () => {
+      throw new Error('database unavailable');
+    };
+    try {
+      await http().post('/attendance/scan').set('Authorization', token).send({ code: 'EMP-1' }).expect(500);
+    } finally {
+      users.service.findById = findById;
+    }
   });
 
   it('answers 401 once the user is deleted', async () => {
