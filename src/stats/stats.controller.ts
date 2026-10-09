@@ -37,7 +37,9 @@ export class StatsController {
   // GET /stats/series?days=14
   @Get('series')
   @Roles('admin', 'manager', 'reception', 'finance', 'store')
-  async series(@Query('days', ParseIntPipe) days = 7) {
+  // Not DefaultValuePipe: if this param is ever typed `number`, the global
+  // ValidationPipe turns ?days=abc into NaN and DefaultValuePipe swaps NaN for 7.
+  async series(@Query('days', new ParseIntPipe({ optional: true })) days = 7) {
     return this.stats.series(days);
   }
 }
