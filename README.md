@@ -89,14 +89,19 @@ docker run -d --name bayne-backend --init --restart unless-stopped \
 
 The container runs `npm run start:prod`, which applies pending migrations with `prisma migrate deploy` and then starts the server. If a migration fails, the process exits non-zero before the server starts. Read the error with `docker logs bayne-backend`.
 
-Prisma records a failed migration in `_prisma_migrations`. Every later start then stops at error P3009, so the container restarts in a loop until someone resolves it. To recover, check what the migration left in the database and fix it by hand. Then mark the migration, using the same image and the same `-e` flags:
+Prisma records a failed migration in `_prisma_migrations`. Every later start then stops at error P3009, so the container restarts in a loop until someone resolves it. To recover:
 
-```bash
-docker run --rm -e DATABASE_URL=... -e DIRECT_URL=... bayne-backend \
-  npx prisma migrate resolve --rolled-back <migration_name>
-```
+1. Stop the container so it stops retrying: `docker stop bayne-backend`.
+2. Check what the migration left in the database and fix it by hand. Then mark the migration with a one-off container, using the same `-e` flags as above:
 
-Use `--rolled-back` if you undid the migration's changes. The next start runs it again, so rebuild the image with a fixed migration first. Use `--applied` if you finished the migration by hand. `docker logs` shows the migration name.
+   ```bash
+   docker run --rm -e DATABASE_URL=... -e DIRECT_URL=... bayne-backend \
+     npx prisma migrate resolve --rolled-back <migration_name>
+   ```
+
+   Use `--rolled-back` if you undid the migration's changes, so the next start runs it again. Use `--applied` if you finished the migration by hand. `docker logs bayne-backend` shows the migration name.
+3. If you used `--rolled-back`, fix the migration and rebuild the image with `docker build -t bayne-backend .`.
+4. The stopped container still runs the old image. Remove it with `docker rm bayne-backend`, then recreate it with the `docker run` command above.
 
 Point the tunnel's public hostname at the API:
 
