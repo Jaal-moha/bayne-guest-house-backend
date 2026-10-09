@@ -1,6 +1,6 @@
 # Auth and roles
 
-Staff log in with email and password and get a JWT. Each route then allows or refuses the request based on the role inside that token. A missing token returns 401 and the wrong role returns 403.
+Staff log in with email and password and get a JWT. Each route then loads the user named by the token and allows or refuses the request based on that user's current role. A missing token returns 401 and the wrong role returns 403.
 
 ## Sub-features
 
@@ -33,5 +33,6 @@ Preconditions:
 
 - Login returns 201, not 200, because it's a Nest `@Post`.
 - `$S token <role>` creates a `Verify <role>` staff row the first time it runs for each role. Account for those rows in staff counts.
-- The role lives inside the JWT for 7 days. Changing a user's role in the database doesn't affect a token that's already been issued, so call `$S down && $S up` for a clean slate.
+- Every request reloads the user by the token's `sub`. A role change in `"User"` applies to tokens already issued, and a deleted user's token gets 401. Tokens still expire after 7 days.
+- No route changes `"User".role`. `PUT /staff/:id` changes only `"Staff".role`, so demote with `$S sql 'update "User" set role = ...'`.
 - `forceChangePassword` is stored but login never reads it. A flag set to `true` doesn't block login.

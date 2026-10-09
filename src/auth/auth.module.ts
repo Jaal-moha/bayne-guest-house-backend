@@ -30,6 +30,6 @@ function tokenLifetime(config: ConfigService): string | number {
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
-  exports: [PassportModule, JwtModule],
+  exports: [PassportModule, JwtModule, JwtStrategy],
 })
 export class AuthModule {}

@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { JwtStrategy } from '../auth/jwt.strategy';
 import { PrismaService } from '../prisma/prisma.service';
 import { AttendanceScanController } from './attendance-scan.controller';
 
@@ -45,6 +46,7 @@ describe('POST /attendance/scan race', () => {
       controllers: [AttendanceScanController],
       providers: [
         { provide: PrismaService, useValue: prisma },
+        { provide: JwtStrategy, useValue: {} },
         {
           provide: JwtService,
           useValue: new JwtService({ secret: 'test-secret' }),

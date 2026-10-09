@@ -6,6 +6,8 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { ConfigService } from '@nestjs/config';
 import { JwtStrategy } from './auth/jwt.strategy';
+import { fakeUsers } from './auth/fake-users';
+import { UsersService } from './users/users.service';
 import { LaundryController } from './laundry/laundry.controller';
 import { LaundryService } from './laundry/laundry.service';
 import { PaymentsController } from './payments/payments.controller';
@@ -21,6 +23,8 @@ describe('Money fields over HTTP', () => {
   const payments = { create: jest.fn(), update: jest.fn() };
   const laundry = { create: jest.fn(), update: jest.fn() };
   const rooms = { create: jest.fn(), update: jest.fn() };
+  const users = fakeUsers();
+  const admin = users.add({ role: 'admin' });
   const jwt = new JwtService({ secret: 'money-test-secret' });
 
   beforeAll(async () => {
@@ -30,6 +34,7 @@ describe('Money fields over HTTP', () => {
       providers: [
         JwtStrategy,
         ConfigService,
+        { provide: UsersService, useValue: users.service },
         { provide: PaymentsService, useValue: payments },
         { provide: LaundryService, useValue: laundry },
         { provide: RoomsService, useValue: rooms },
@@ -54,7 +59,7 @@ describe('Money fields over HTTP', () => {
   const send = (r: (typeof routes)[number], value: unknown) =>
     request(app.getHttpServer())
       [r.verb](r.path)
-      .set('Authorization', `Bearer ${jwt.sign({ sub: 1, role: 'admin' })}`)
+      .set('Authorization', `Bearer ${jwt.sign({ sub: admin })}`)
       .send({ ...r.base, [r.field]: value });
 
   describe.each(routes)('$verb $path', (r) => {

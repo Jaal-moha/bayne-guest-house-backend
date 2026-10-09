@@ -4,15 +4,19 @@ import { PassportModule } from '@nestjs/passport';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { ConfigService } from '@nestjs/config';
+import type { Role } from '@prisma/client';
 import { JwtStrategy } from '../auth/jwt.strategy';
+import { fakeUsers } from '../auth/fake-users';
+import { UsersService } from '../users/users.service';
 import { InventoryController } from './inventory.controller';
 import { InventoryService } from './inventory.service';
 
 describe('InventoryController auth', () => {
   let app: INestApplication;
   let jwt: JwtService;
-  const tokenFor = (role: string) =>
-    `Bearer ${jwt.sign({ sub: 1, email: 'x@example.com', role })}`;
+  const users = fakeUsers();
+  const tokenFor = (role: Role) =>
+    `Bearer ${jwt.sign({ sub: users.add({ role }) })}`;
 
   beforeAll(async () => {
     process.env.JWT_SECRET = 'test-secret';
@@ -25,6 +29,7 @@ describe('InventoryController auth', () => {
       providers: [
         JwtStrategy,
         ConfigService,
+        { provide: UsersService, useValue: users.service },
         {
           provide: InventoryService,
           useValue: {
@@ -56,7 +61,7 @@ describe('InventoryController auth', () => {
       .expect(403);
   });
 
-  it.each(['store', 'barista', 'reception'])(
+  it.each(['store', 'barista', 'reception'] as const)(
     'allows the %s role',
     async (role) => {
       await request(app.getHttpServer())
@@ -66,7 +71,7 @@ describe('InventoryController auth', () => {
     },
   );
 
-  it.each(['barista', 'reception'])(
+  it.each(['barista', 'reception'] as const)(
     'stops %s from overwriting a quantity outside the movement log',
     async (role) => {
       await request(app.getHttpServer())
