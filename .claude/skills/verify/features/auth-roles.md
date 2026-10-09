@@ -39,3 +39,4 @@ Preconditions:
 - Every request reloads the user by the token's `sub`. A role change in `"User"` applies to tokens already issued, and a deleted user's token gets 401. Tokens still expire after 7 days.
 - No route changes `"User".role`. `PUT /staff/:id` changes only `"Staff".role`, so demote with `$S sql 'update "User" set role = ...'`.
 - `POST /staff` defaults `forceChangePassword` to true. `$S token <role>` passes `forceChangePassword:false`, so role tokens are never blocked. The seeded admin has the flag false.
+- bcrypt reads only the first 72 bytes of a password. `newPassword` on `POST /auth/change-password` and `password` on `POST /staff`, `PUT /staff/:id` and `POST /users/staff/:staffId` return 400 `password must be at most 72 bytes` (or `newPassword ...`) above 72 UTF-8 bytes. Login and `currentPassword` have no cap, so an older, longer password still works.
