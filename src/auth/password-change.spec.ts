@@ -27,17 +27,17 @@ describe('Forced password change', () => {
   const users = fakeUsers();
   const http = () => request(app.getHttpServer());
 
-  async function staffMember(forceChangePassword: boolean) {
+  async function staffMember(forceChangePassword: boolean, password = 'first-pass') {
     const email = `staff${Math.random()}@example.com`;
     const id = users.add({
       role: 'reception',
       email,
-      password: await bcrypt.hash('first-pass', 4),
+      password: await bcrypt.hash(password, 4),
       forceChangePassword,
     });
     const login = await http()
       .post('/auth/login')
-      .send({ email, password: 'first-pass' })
+      .send({ email, password })
       .expect(201);
     return { id, email, login: login.body, auth: `Bearer ${login.body.access_token}` };
   }
@@ -123,6 +123,7 @@ describe('Forced password change', () => {
     [{ currentPassword: 'first-pass', newPassword: 'first-pass' }, 'New password must differ from the current password'],
     [{ currentPassword: 'first-pass', newPassword: 'short' }, ['newPassword must be longer than or equal to 8 characters']],
     [{ newPassword: 'second-pass' }, ['currentPassword should not be empty', 'currentPassword must be a string']],
+    [{ currentPassword: 'first-pass', newPassword: 'é'.repeat(37) }, ['newPassword must be at most 72 bytes']],
   ])('rejects %j with 400 and keeps the flag and password', async (body, message) => {
     const { id, email, auth } = await staffMember(true);
 
@@ -136,6 +137,34 @@ describe('Forced password change', () => {
     expect(users.get(id)?.forceChangePassword).toBe(true);
     await http().post('/auth/login').send({ email, password: 'first-pass' }).expect(201);
     await http().get('/rooms').set('Authorization', auth).expect(403);
+  });
+
+  it('refuses a new password that bcrypt would cut back to the current one', async () => {
+    const current = 'a'.repeat(72);
+    const { id, email, auth } = await staffMember(true, current);
+
+    const res = await http()
+      .post('/auth/change-password')
+      .set('Authorization', auth)
+      .send({ currentPassword: current, newPassword: `${current}b` })
+      .expect(400);
+    expect(res.body.message).toEqual(['newPassword must be at most 72 bytes']);
+
+    expect(users.get(id)?.forceChangePassword).toBe(true);
+    await http().post('/auth/login').send({ email, password: current }).expect(201);
+  });
+
+  it('compares the new password the way bcrypt reads it for an older, longer password', async () => {
+    const current = 'a'.repeat(80);
+    const { id, auth } = await staffMember(true, current);
+
+    const res = await http()
+      .post('/auth/change-password')
+      .set('Authorization', auth)
+      .send({ currentPassword: current, newPassword: 'a'.repeat(72) })
+      .expect(400);
+    expect(res.body.message).toBe('New password must differ from the current password');
+    expect(users.get(id)?.forceChangePassword).toBe(true);
   });
 
   it('lets a user without the flag change their password too', async () => {
