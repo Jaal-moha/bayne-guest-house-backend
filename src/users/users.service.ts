@@ -15,6 +15,13 @@ export class UsersService {
     return this.prisma.user.findUnique({ where: { id } });
   }
 
+  setPassword(id: number, passwordHash: string) {
+    return this.prisma.user.update({
+      where: { id },
+      data: { password: passwordHash, forceChangePassword: false },
+    });
+  }
+
   async createForStaff(staffId: number, dto: CreateUserForStaffDto) {
     const staff = await this.prisma.staff.findUnique({
       where: { id: staffId },

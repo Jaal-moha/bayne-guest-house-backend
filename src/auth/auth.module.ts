@@ -5,7 +5,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { UsersModule } from '../users/users.module';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
-import { JwtStrategy, jwtSecret } from './jwt.strategy';
+import { JwtStrategy, PasswordChangeJwtStrategy, jwtSecret } from './jwt.strategy';
 import { envValue } from '../env';
 
 // jsonwebtoken reads a unitless string as milliseconds, so '3600' would expire in 3.6 seconds.
@@ -29,7 +29,7 @@ function tokenLifetime(config: ConfigService): string | number {
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, PasswordChangeJwtStrategy],
   exports: [PassportModule, JwtModule, JwtStrategy],
 })
 export class AuthModule {}
