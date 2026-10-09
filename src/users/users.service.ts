@@ -15,6 +15,15 @@ export class UsersService {
     return this.prisma.user.findUnique({ where: { id } });
   }
 
+  // False when the stored hash is no longer currentHash, e.g. an admin reset it after the caller read it.
+  async setPassword(id: number, currentHash: string, newHash: string): Promise<boolean> {
+    const { count } = await this.prisma.user.updateMany({
+      where: { id, password: currentHash },
+      data: { password: newHash, forceChangePassword: false },
+    });
+    return count === 1;
+  }
+
   async createForStaff(staffId: number, dto: CreateUserForStaffDto) {
     const staff = await this.prisma.staff.findUnique({
       where: { id: staffId },

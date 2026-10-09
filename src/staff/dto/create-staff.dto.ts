@@ -1,5 +1,6 @@
 import { Role } from '@prisma/client';
 import { IsEnum, IsOptional, IsString, MinLength, IsEmail, IsBoolean } from 'class-validator';
+import { FitsBcrypt } from '../../validation';
 
 export class CreateStaffDto {
   @IsString()
@@ -24,6 +25,7 @@ export class CreateStaffDto {
   @IsOptional()
   @IsString()
   @MinLength(6)
+  @FitsBcrypt()
   password?: string;
 
   @IsOptional()

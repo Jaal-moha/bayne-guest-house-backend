@@ -5,7 +5,16 @@ export function fakeUsers() {
   const rows = new Map<number, User>();
   let nextId = 1;
   return {
-    service: { findById: async (id: number) => rows.get(id) ?? null },
+    service: {
+      findById: async (id: number) => rows.get(id) ?? null,
+      findByEmail: async (email: string) =>
+        [...rows.values()].find((user) => user.email === email) ?? null,
+      setPassword: async (id: number, currentHash: string, password: string) => {
+        if (rows.get(id)?.password !== currentHash) return false;
+        rows.set(id, { ...rows.get(id)!, password, forceChangePassword: false });
+        return true;
+      },
+    },
     add(fields: Partial<User> & { role: Role }): number {
       const id = nextId++;
       rows.set(id, {
@@ -20,6 +29,9 @@ export function fakeUsers() {
         ...fields,
       });
       return id;
+    },
+    get(id: number) {
+      return rows.get(id);
     },
     update(id: number, fields: Partial<User>) {
       rows.set(id, { ...rows.get(id)!, ...fields });

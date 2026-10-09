@@ -11,7 +11,7 @@ import { RoomsService } from '../rooms/rooms.service';
 import { UsersService } from '../users/users.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { JwtStrategy } from './jwt.strategy';
+import { JwtStrategy, PasswordChangeJwtStrategy } from './jwt.strategy';
 import { fakeUsers } from './fake-users';
 
 process.env.JWT_SECRET = 'session-test-secret';
@@ -28,6 +28,7 @@ describe('JWT sessions follow the user row', () => {
       controllers: [AuthController, RoomsController, AttendanceScanController],
       providers: [
         JwtStrategy,
+        PasswordChangeJwtStrategy,
         ConfigService,
         { provide: UsersService, useValue: users.service },
         { provide: AuthService, useValue: {} },
@@ -51,7 +52,13 @@ describe('JWT sessions follow the user row', () => {
     await http().post('/rooms').set('Authorization', token).send(room).expect(403);
     const me = await http().get('/auth/me').set('Authorization', token).expect(200);
     expect(me.body).toEqual({
-      user: { userId: id, email: 'sara.t@example.com', role: 'reception', name: 'Sara T' },
+      user: {
+        userId: id,
+        email: 'sara.t@example.com',
+        role: 'reception',
+        name: 'Sara T',
+        forceChangePassword: false,
+      },
     });
   });
 
