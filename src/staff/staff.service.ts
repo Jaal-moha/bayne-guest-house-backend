@@ -113,7 +113,11 @@ export class StaffService {
     });
     if (!existingStaff) throw new NotFoundException('Staff not found');
 
-    const userData: any = {};
+    const userData: {
+      email?: string;
+      password?: string;
+      forceChangePassword?: boolean;
+    } = {};
     if (dto.username) userData.email = dto.username;
     if (dto.password) userData.password = await bcrypt.hash(dto.password, 10);
     if (dto.forceChangePassword !== undefined)
@@ -136,10 +140,12 @@ export class StaffService {
             where: { id: existingStaff.user.id },
             data: userData,
           });
-        } else if (!existingStaff.user && dto.username && dto.password) {
+        } else if (!existingStaff.user && userData.email && userData.password) {
           await tx.user.create({
             data: {
               ...userData,
+              email: userData.email,
+              password: userData.password,
               role: staff.role,
               staffId: staff.id,
               name: staff.name,
