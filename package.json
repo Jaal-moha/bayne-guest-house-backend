@@ -52,6 +52,7 @@
     "@types/node": "^22.17.2",
     "@types/passport": "^1.0.17",
     "@types/passport-jwt": "^4.0.1",
+    "@types/pdfkit": "^0.17.6",
     "@types/qrcode": "^1.5.5",
     "@types/supertest": "^6.0.2",
     "dotenv": "^16.6.1",
