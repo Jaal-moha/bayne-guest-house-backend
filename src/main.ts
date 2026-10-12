@@ -12,6 +12,8 @@ async function bootstrap() {
   // Enable CORS for frontend communication
   app.enableCors({
     allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-api-token'],
+    // The ID card download reads its filename from this header; browsers hide it from cross-origin JS otherwise.
+    exposedHeaders: ['Content-Disposition'],
     origin: [
       'http://localhost:3001', // frontend address
       ...allowedOrigins,
