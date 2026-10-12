@@ -9,10 +9,22 @@ import * as bcrypt from 'bcryptjs';
 import { Prisma } from '@prisma/client';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 import { CreateStaffDto } from './dto/create-staff.dto';
+import type { StaffPhotoUpload } from './staff-photo';
 
 const USER_FIELDS = {
   select: { id: true, email: true, role: true, staffId: true, name: true },
-};
+} as const;
+const STAFF_INCLUDE = {
+  user: USER_FIELDS,
+  photo: { select: { updatedAt: true } },
+} satisfies Prisma.StaffInclude;
+type StaffRow = Prisma.StaffGetPayload<{ include: typeof STAFF_INCLUDE }>;
+
+const toStaffJson = ({ photo, ...staff }: StaffRow) => ({
+  ...staff,
+  photoUpdatedAt: photo?.updatedAt ?? null,
+  idCardUrl: `/staff/${staff.id}/id-card`,
+});
 const BARCODE_ATTEMPTS = 5;
 
 const isUniqueViolationOn = (err: unknown, field: string) =>
@@ -86,12 +98,12 @@ export class StaffService {
         }
         return tx.staff.findUniqueOrThrow({
           where: { id: staff.id },
-          include: { user: USER_FIELDS },
+          include: STAFF_INCLUDE,
         });
       }),
     );
 
-    return { ...created, idCardUrl: `/staff/${created.id}/id-card` };
+    return toStaffJson(created);
   }
 
   async update(id: number, dto: UpdateStaffDto) {
@@ -137,12 +149,12 @@ export class StaffService {
         }
         return tx.staff.findUniqueOrThrow({
           where: { id },
-          include: { user: USER_FIELDS },
+          include: STAFF_INCLUDE,
         });
       }),
     );
 
-    return { ...updatedStaff, idCardUrl: `/staff/${updatedStaff.id}/id-card` };
+    return toStaffJson(updatedStaff);
   }
 
   async delete(id: number) {
@@ -162,21 +174,61 @@ export class StaffService {
 
   findAll() {
     return this.prisma.staff
-      .findMany({
-        include: { user: USER_FIELDS },
-        orderBy: { id: 'desc' },
-      })
-      .then((rows) =>
-        rows.map((r) => ({ ...r, idCardUrl: `/staff/${r.id}/id-card` })),
-      );
+      .findMany({ include: STAFF_INCLUDE, orderBy: { id: 'desc' } })
+      .then((rows) => rows.map(toStaffJson));
   }
 
   async findOne(id: number) {
     const staff = await this.prisma.staff.findUnique({
       where: { id },
-      include: { user: USER_FIELDS },
+      include: STAFF_INCLUDE,
     });
     if (!staff) throw new NotFoundException('Staff not found');
-    return { ...staff, idCardUrl: `/staff/${staff.id}/id-card` };
+    return toStaffJson(staff);
+  }
+
+  async findForIdCard(id: number) {
+    const staff = await this.prisma.staff.findUnique({
+      where: { id },
+      include: {
+        user: { select: { id: true } },
+        photo: { select: { data: true } },
+      },
+    });
+    if (!staff) throw new NotFoundException('Staff not found');
+    return staff;
+  }
+
+  async setPhoto(staffId: number, photo: StaffPhotoUpload) {
+    try {
+      const saved = await this.prisma.staffPhoto.upsert({
+        where: { staffId },
+        create: { staffId, ...photo },
+        update: photo,
+        select: { updatedAt: true },
+      });
+      return { photoUpdatedAt: saved.updatedAt };
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2003'
+      ) {
+        throw new NotFoundException('Staff not found');
+      }
+      throw err;
+    }
+  }
+
+  async getPhoto(staffId: number) {
+    const photo = await this.prisma.staffPhoto.findUnique({
+      where: { staffId },
+      select: { mime: true, data: true },
+    });
+    if (!photo) throw new NotFoundException('Staff member has no photo');
+    return photo;
+  }
+
+  async deletePhoto(staffId: number) {
+    await this.prisma.staffPhoto.deleteMany({ where: { staffId } });
   }
 }

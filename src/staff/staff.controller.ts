@@ -1,13 +1,36 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, UseGuards, Res, Req, ForbiddenException, Put, Delete } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Header,
+  HttpCode,
+  Param,
+  ParseIntPipe,
+  Post,
+  Put,
+  Req,
+  StreamableFile,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { AuthGuard } from '@nestjs/passport';
 import { StaffService } from './staff.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
-import { AuthGuard } from '@nestjs/passport';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
-import type { Response } from 'express';
-import * as QRCode from 'qrcode';
-import PDFDocument from 'pdfkit';
+import { renderIdCard, ROLE_LABELS } from './id-card';
+import { parseStaffPhoto } from './staff-photo';
+
+type JwtUser = { role?: string; id?: number; userId?: number; sub?: number };
+
+const ID_CARD_ROLES = ['admin', 'manager'];
+// Multer answers anything past this with 413 before parseStaffPhoto sees it; between 2 MB and this cap parseStaffPhoto answers 400.
+const UPLOAD_CAP_BYTES = 10 * 1024 * 1024;
 
 @Controller('staff')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -32,64 +55,61 @@ export class StaffController {
     return this.staffService.update(id, dto);
   }
 
+  @Put(':id/photo')
+  @Roles('admin', 'manager')
+  @UseInterceptors(
+    FileInterceptor('photo', {
+      limits: { fileSize: UPLOAD_CAP_BYTES, files: 1 },
+    }),
+  )
+  setPhoto(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file?: { buffer: Buffer },
+  ) {
+    return this.staffService.setPhoto(id, parseStaffPhoto(file?.buffer));
+  }
+
+  @Get(':id/photo')
+  @Roles('admin', 'manager')
+  @Header('Cache-Control', 'private, max-age=0')
+  async getPhoto(@Param('id', ParseIntPipe) id: number) {
+    const photo = await this.staffService.getPhoto(id);
+    return new StreamableFile(photo.data, { type: photo.mime });
+  }
+
+  @Delete(':id/photo')
+  @Roles('admin', 'manager')
+  @HttpCode(204)
+  async deletePhoto(@Param('id', ParseIntPipe) id: number) {
+    await this.staffService.deletePhoto(id);
+  }
+
   @Get(':id/id-card')
-  async getIdCard(@Param('id', ParseIntPipe) id: number, @Req() req: any, @Res() res: Response) {
+  async getIdCard(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: { user?: JwtUser },
+  ) {
     const user = req.user;
-    const userId = (user && (user.id ?? user.userId ?? user.sub)) as number | undefined;
-
-    if (!user) {
+    const userId = user?.id ?? user?.userId ?? user?.sub;
+    const staff = await this.staffService.findForIdCard(id);
+    if (
+      !ID_CARD_ROLES.includes(user?.role ?? '') &&
+      staff.user?.id !== userId
+    ) {
       throw new ForbiddenException('Access denied');
     }
 
-    const staff = await this.staffService.findOne(id);
-    if (user.role !== 'admin' && staff.user?.id !== userId) {
-      throw new ForbiddenException('Access denied');
-    }
-
-    // Generate QR code (use barcode or fallback to id)
-    const qrText = staff.barcode ?? String(staff.id);
-    const qrDataUrl = await QRCode.toDataURL(qrText, { margin: 2, errorCorrectionLevel: 'H' });
-
-    // Convert data URL to Buffer
-    const base64Data = qrDataUrl.replace(/^data:image\/png;base64,/, '');
-    const imgBuffer = Buffer.from(base64Data, 'base64');
-
-    // Create PDF with padding/margins
-    const doc = new PDFDocument({
-      size: 'A4',
-      margins: { top: 60, bottom: 60, left: 60, right: 60 } // padding
+    const card = renderIdCard({
+      name: staff.name,
+      role: ROLE_LABELS[staff.role],
+      code: staff.barcode,
+      issued: new Date(),
+      photo: staff.photo ? Buffer.from(staff.photo.data) : undefined,
     });
-
-    // Prepare response headers so client can fetch and download without redirect
-    const filename = `${(staff.name ?? 'staff').replace(/\s+/g, '_')}_id.pdf`;
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-
-    // Pipe PDF to response
-    doc.pipe(res);
-
-    // Add a title
-    doc.fontSize(18).text('Staff ID Card', { align: 'center' });
-    doc.moveDown(1);
-
-    // Draw staff details
-    doc.fontSize(12).text(`Name: ${staff.name ?? 'N/A'}`, { align: 'center' });
-    doc.text(`ID: ${staff.id}`, { align: 'center' });
-    doc.moveDown(2);
-
-    // Calculate image placement (centered) and size; leave padding around it
-    const qrSize = 220; // px - adjust as needed
-    const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-    const x = doc.page.margins.left + (pageWidth - qrSize) / 2;
-    const y = doc.y; // current y position after texts
-
-    doc.image(imgBuffer, x, y, { width: qrSize, height: qrSize });
-
-    // Optionally add barcode text below the QR
-    doc.moveDown( (qrSize / 72) + 1 ); // rough move to below image
-    doc.fontSize(10).text(qrText, { align: 'center' });
-
-    doc.end();
+    return new StreamableFile(card, {
+      type: 'application/pdf',
+      disposition: `inline; filename="staff-${staff.barcode}.pdf"`,
+    });
   }
 
   @Get(':id')
