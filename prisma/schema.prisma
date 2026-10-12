@@ -79,6 +79,15 @@ model Staff {
   barcode          String       @unique
   attendance       Attendance[]
   user             User?
+  photo            StaffPhoto?
+}
+
+model StaffPhoto {
+  staffId   Int      @id
+  staff     Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  mime      String
+  data      Bytes
+  updatedAt DateTime @updatedAt
 }
 
 model Guest {
