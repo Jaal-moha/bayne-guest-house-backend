@@ -1,4 +1,10 @@
-import { Controller, Get, INestApplication } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  INestApplication,
+} from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
@@ -22,6 +28,10 @@ class MoneyController {
   list() {
     return [{ amount: new Prisma.Decimal('19.99') }];
   }
+
+  @Delete()
+  @HttpCode(204)
+  async remove() {}
 }
 
 describe('Decimal fields over HTTP', () => {
@@ -30,7 +40,9 @@ describe('Decimal fields over HTTP', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [MoneyController],
-      providers: [{ provide: APP_INTERCEPTOR, useClass: DecimalToNumberInterceptor }],
+      providers: [
+        { provide: APP_INTERCEPTOR, useClass: DecimalToNumberInterceptor },
+      ],
     }).compile();
     app = moduleRef.createNestApplication();
     await app.init();
@@ -48,8 +60,14 @@ describe('Decimal fields over HTTP', () => {
   });
 
   it('converts inside a top-level array', async () => {
-    const res = await request(app.getHttpServer()).get('/money/list').expect(200);
+    const res = await request(app.getHttpServer())
+      .get('/money/list')
+      .expect(200);
     expect(res.body).toEqual([{ amount: 19.99 }]);
+  });
+
+  it('lets a handler that returns nothing answer 204', async () => {
+    await request(app.getHttpServer()).delete('/money').expect(204);
   });
 
   it('runs on every route of the app', () => {
