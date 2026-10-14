@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { inflateSync } from 'zlib';
@@ -97,6 +98,14 @@ function pdfText(pdf: Buffer): string {
   return lines.join('\n');
 }
 
+function contentDigest(pdf: Buffer): string {
+  const hash = createHash('sha256');
+  for (const o of pdfObjects(pdf).values())
+    if (o.stream && !/\/Subtype|\/Length1|\/Type \/XObject/.test(o.dict))
+      hash.update(o.stream);
+  return hash.digest('hex');
+}
+
 const pageCount = (pdf: Buffer) =>
   pdf.toString('latin1').match(/\/Type \/Page\b/g)!.length;
 const mediaBox = (pdf: Buffer) =>
@@ -147,5 +156,16 @@ describe('renderIdCard', () => {
   it('prints an Ethiopic name', async () => {
     const text = await pdfBytes({ ...card, name: 'አበበ ከበደ' }).then(pdfText);
     expect(text).toContain('አበበ ከበደ');
+  });
+
+  it('draws the production sheet exactly as before', async () => {
+    expect(contentDigest(await pdfBytes(card))).toMatchInlineSnapshot(
+      `"381fa25a086baf45a0bbcfeb7fcb8c4c9e3b0f1bf49726b37f40c789638d8419"`,
+    );
+    expect(
+      contentDigest(await pdfBytes({ ...card, photo: JPEG })),
+    ).toMatchInlineSnapshot(
+      `"41be1381d8fa8c0c3ac13d1626d9bf848052313ac7cfd256b102f7e6adec04b8"`,
+    );
   });
 });
