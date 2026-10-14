@@ -23,7 +23,7 @@ import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
-import { renderIdCard, ROLE_LABELS } from './id-card';
+import { IdCard, renderIdCards, ROLE_LABELS } from './id-card';
 import { parseStaffPhoto } from './staff-photo';
 
 type JwtUser = { role?: string; id?: number; userId?: number; sub?: number };
@@ -31,6 +31,16 @@ type JwtUser = { role?: string; id?: number; userId?: number; sub?: number };
 const ID_CARD_ROLES = ['admin', 'manager'];
 // Multer answers anything past this with 413 before parseStaffPhoto sees it; between 2 MB and this cap parseStaffPhoto answers 400.
 const UPLOAD_CAP_BYTES = 10 * 1024 * 1024;
+
+type IdCardStaff = Awaited<ReturnType<StaffService['findForIdCard']>>;
+
+const toIdCard = (staff: IdCardStaff, issued: Date): IdCard => ({
+  name: staff.name,
+  role: ROLE_LABELS[staff.role],
+  code: staff.barcode,
+  issued,
+  photo: staff.photo ? Buffer.from(staff.photo.data) : undefined,
+});
 
 @Controller('staff')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -99,14 +109,8 @@ export class StaffController {
       throw new ForbiddenException('Access denied');
     }
 
-    const card = renderIdCard({
-      name: staff.name,
-      role: ROLE_LABELS[staff.role],
-      code: staff.barcode,
-      issued: new Date(),
-      photo: staff.photo ? Buffer.from(staff.photo.data) : undefined,
-    });
-    return new StreamableFile(card, {
+    const sheet = renderIdCards([toIdCard(staff, new Date())]);
+    return new StreamableFile(sheet, {
       type: 'application/pdf',
       disposition: `inline; filename="staff-${staff.barcode}.pdf"`,
     });

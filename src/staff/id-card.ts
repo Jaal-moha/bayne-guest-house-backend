@@ -33,12 +33,12 @@ const COLOR = {
   line: '#9a9ca2',
   placeholder: '#e6e7e9',
   photoEdge: '#d4d5d8',
+  backTint: '#f1f0ec',
 };
 const CARD_W = mm(54);
 const CARD_H = mm(85.6);
 const PAD = mm(4);
 const BLEED = mm(1.5);
-const SHEET_TOP = mm(30);
 const BAND_H = mm(11);
 const PHOTO_W = mm(35);
 const PHOTO_H = mm(45);
@@ -46,8 +46,15 @@ const QR_SIDE = mm(34);
 const NAME_MAX = mm(4.2);
 const NAME_MIN = mm(3);
 const TWO_LINES = 'A\nA';
-const MARK_GAP = mm(2);
-const MARK_LEN = mm(5);
+const MARK_GAP = mm(1);
+const MARK_LEN = mm(2);
+const NOTE_TOP = mm(8);
+const NOTE_SIZE = 7.5;
+const NOTE_WIDTH = mm(180);
+const NOTE =
+  'Print at 100% (actual size). Cut on the corner marks, fold on the dashed line so the photo and QR face out, then laminate.';
+// Three 85.6 mm cards leave 40 mm of A4. With the note in the top margin these rows keep every mark and line of text 8 mm inside the page edge, the margin most printers cannot print into.
+const SLOT_TOPS = [0, 1, 2].map((i) => mm(15) + i * (CARD_H + mm(7)));
 
 const ISSUED_FORMAT = new Intl.DateTimeFormat('en-US', {
   month: 'short',
@@ -82,34 +89,39 @@ const FONTS = Object.entries(FONT_FILES).map(
 
 type Doc = PDFKit.PDFDocument;
 
-export function renderIdCard(card: IdCard): Doc {
+export function renderIdCards(cards: IdCard[]): Doc {
   const doc = new PDFDocument({
     size: 'A4',
     margin: 0,
-    info: { Title: `Staff card ${card.code}` },
+    info: {
+      Title: cards.length === 1 ? `Staff card ${cards[0].code}` : 'Staff cards',
+    },
   });
   for (const [name, data] of FONTS) doc.registerFont(name, data);
 
   const x = (doc.page.width - 2 * CARD_W) / 2;
-  const y = SHEET_TOP;
-  doc
-    .save()
-    .rect(x - BLEED, y - BLEED, 2 * CARD_W + 2 * BLEED, CARD_H + 2 * BLEED)
-    .clip();
-  front(doc, x, y, card);
-  back(doc, x + CARD_W, y, card);
-  doc.restore();
-  marks(doc, x, y);
-  doc
-    .font('sans')
-    .fontSize(9)
-    .fillColor(COLOR.muted)
-    .text(
-      'Print at 100% (actual size). Cut on the corner marks, fold on the dashed line so the photo and QR face out, then laminate.',
-      x,
-      y + CARD_H + mm(12),
-      { width: 2 * CARD_W, align: 'center' },
-    );
+  for (let first = 0; first < cards.length; first += SLOT_TOPS.length) {
+    if (first > 0) doc.addPage();
+    doc
+      .font('sans')
+      .fontSize(NOTE_SIZE)
+      .fillColor(COLOR.muted)
+      .text(NOTE, (doc.page.width - NOTE_WIDTH) / 2, NOTE_TOP, {
+        width: NOTE_WIDTH,
+        align: 'center',
+      });
+    cards.slice(first, first + SLOT_TOPS.length).forEach((card, slot) => {
+      const y = SLOT_TOPS[slot];
+      doc
+        .save()
+        .rect(x - BLEED, y - BLEED, 2 * CARD_W + 2 * BLEED, CARD_H + 2 * BLEED)
+        .clip();
+      front(doc, x, y, card);
+      back(doc, x + CARD_W, y, card);
+      doc.restore();
+      marks(doc, x, y);
+    });
+  }
   doc.end();
   return doc;
 }
@@ -208,13 +220,19 @@ function front(doc: Doc, ox: number, oy: number, card: IdCard) {
 }
 
 function back(doc: Doc, ox: number, oy: number, card: IdCard) {
+  const qx = ox + (CARD_W - QR_SIDE) / 2;
+  const qy = oy + mm(15);
+  doc
+    .rect(ox, oy - BLEED, CARD_W + BLEED, CARD_H + 2 * BLEED)
+    .fill(COLOR.backTint);
+  doc
+    .rect(qx - mm(2), qy - mm(2), QR_SIDE + mm(4), QR_SIDE + mm(4))
+    .fill('#fff');
   wordmark(doc, ox + PAD, oy + mm(7), COLOR.graphite);
 
   const qr = QRCode.create(card.code, { errorCorrectionLevel: 'M' });
   const n = qr.modules.size;
   const cell = QR_SIDE / n;
-  const qx = ox + (CARD_W - QR_SIDE) / 2;
-  const qy = oy + mm(15);
   doc.fillColor(COLOR.graphite);
   // The overlap closes hairline gaps between adjacent modules that some PDF rasterizers leave.
   for (let r = 0; r < n; r++)
