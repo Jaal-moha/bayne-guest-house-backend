@@ -35,6 +35,7 @@ describe('InventoryController auth', () => {
           useValue: {
             findAll: async () => [],
             create: async () => ({ id: 1 }),
+            remove: async () => ({ id: 1 }),
           },
         },
       ],
@@ -81,4 +82,28 @@ describe('InventoryController auth', () => {
         .expect(403);
     },
   );
+
+  it('stops a barista from creating or deleting an item', async () => {
+    await request(app.getHttpServer())
+      .post('/inventory')
+      .set('Authorization', tokenFor('barista'))
+      .send({ name: 'Soap', quantity: 1 })
+      .expect(403);
+    await request(app.getHttpServer())
+      .delete('/inventory/1')
+      .set('Authorization', tokenFor('barista'))
+      .expect(403);
+  });
+
+  it.each(['store', 'reception'] as const)('lets %s create and delete an item', async (role) => {
+    await request(app.getHttpServer())
+      .post('/inventory')
+      .set('Authorization', tokenFor(role))
+      .send({ name: 'Soap', quantity: 1 })
+      .expect(201);
+    await request(app.getHttpServer())
+      .delete('/inventory/1')
+      .set('Authorization', tokenFor(role))
+      .expect(200);
+  });
 });

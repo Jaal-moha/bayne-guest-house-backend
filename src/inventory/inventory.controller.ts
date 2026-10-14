@@ -15,6 +15,7 @@ export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Post()
+  @Roles('admin', 'manager', 'store', 'reception')
   create(@Body() createInventoryDto: CreateInventoryDto) {
     return this.inventoryService.create(createInventoryDto);
   }
@@ -63,6 +64,7 @@ export class InventoryController {
   }
 
   @Delete(':id')
+  @Roles('admin', 'manager', 'store', 'reception')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.inventoryService.remove(id);
   }
