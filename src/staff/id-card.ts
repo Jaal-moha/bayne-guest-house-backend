@@ -10,6 +10,21 @@ export type IdCard = {
   code: string;
   issued: Date;
   photo?: Buffer;
+  phone?: string;
+};
+
+export type IdCardOptions = {
+  photo: 'passport' | 'compact';
+  back: 'white' | 'tint';
+  wordmark: string;
+  perPage: 1 | 3;
+};
+
+export const DEFAULT_ID_CARD_OPTIONS: IdCardOptions = {
+  photo: 'passport',
+  back: 'white',
+  wordmark: 'ALMIS HOTEL',
+  perPage: 1,
 };
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -38,16 +53,56 @@ const CARD_W = mm(54);
 const CARD_H = mm(85.6);
 const PAD = mm(4);
 const BLEED = mm(1.5);
-const SHEET_TOP = mm(30);
 const BAND_H = mm(11);
-const PHOTO_W = mm(35);
-const PHOTO_H = mm(45);
+const STAFF_LABEL_ROOM = mm(12);
 const QR_SIDE = mm(34);
 const NAME_MAX = mm(4.2);
 const NAME_MIN = mm(3);
 const TWO_LINES = 'A\nA';
-const MARK_GAP = mm(2);
-const MARK_LEN = mm(5);
+const NOTE =
+  'Print at 100% (actual size). Cut on the corner marks, fold on the dashed line so the photo and QR face out, then laminate.';
+
+const PHOTO_BOX: Record<
+  IdCardOptions['photo'],
+  { w: number; h: number; showPhone: boolean }
+> = {
+  passport: { w: mm(35), h: mm(45), showPhone: false },
+  compact: { w: mm(25), h: mm(32), showPhone: true },
+};
+
+const BACK_PANEL: Record<IdCardOptions['back'], string | null> = {
+  white: null,
+  tint: '#f1f0ec',
+};
+
+type PageLayout = {
+  tops: number[];
+  markGap: number;
+  markLen: number;
+  noteTop: number;
+  noteSize: number;
+  noteWidth: number;
+};
+
+const PAGE_LAYOUT: Record<IdCardOptions['perPage'], PageLayout> = {
+  1: {
+    tops: [mm(30)],
+    markGap: mm(2),
+    markLen: mm(5),
+    noteTop: mm(30) + CARD_H + mm(12),
+    noteSize: 9,
+    noteWidth: 2 * CARD_W,
+  },
+  // Three 85.6 mm cards leave 40 mm of A4 for margins, gaps and the note, so the marks shrink and the note fits one line.
+  3: {
+    tops: [0, 1, 2].map((i) => mm(9.5) + i * (CARD_H + mm(9))),
+    markGap: mm(1.5),
+    markLen: mm(2.5),
+    noteTop: mm(289.5),
+    noteSize: 7.5,
+    noteWidth: mm(180),
+  },
+};
 
 const ISSUED_FORMAT = new Intl.DateTimeFormat('en-US', {
   month: 'short',
@@ -83,58 +138,101 @@ const FONTS = Object.entries(FONT_FILES).map(
 type Doc = PDFKit.PDFDocument;
 
 export function renderIdCard(card: IdCard): Doc {
+  return renderIdCards([card]);
+}
+
+export function renderIdCards(
+  cards: IdCard[],
+  options = DEFAULT_ID_CARD_OPTIONS,
+): Doc {
   const doc = new PDFDocument({
     size: 'A4',
     margin: 0,
-    info: { Title: `Staff card ${card.code}` },
+    info: {
+      Title: cards.length === 1 ? `Staff card ${cards[0].code}` : 'Staff cards',
+    },
   });
   for (const [name, data] of FONTS) doc.registerFont(name, data);
 
+  const layout = PAGE_LAYOUT[options.perPage];
   const x = (doc.page.width - 2 * CARD_W) / 2;
-  const y = SHEET_TOP;
-  doc
-    .save()
-    .rect(x - BLEED, y - BLEED, 2 * CARD_W + 2 * BLEED, CARD_H + 2 * BLEED)
-    .clip();
-  front(doc, x, y, card);
-  back(doc, x + CARD_W, y, card);
-  doc.restore();
-  marks(doc, x, y);
-  doc
-    .font('sans')
-    .fontSize(9)
-    .fillColor(COLOR.muted)
-    .text(
-      'Print at 100% (actual size). Cut on the corner marks, fold on the dashed line so the photo and QR face out, then laminate.',
-      x,
-      y + CARD_H + mm(12),
-      { width: 2 * CARD_W, align: 'center' },
-    );
+  for (let first = 0; first < cards.length; first += layout.tops.length) {
+    if (first > 0) doc.addPage();
+    cards.slice(first, first + layout.tops.length).forEach((card, slot) => {
+      const y = layout.tops[slot];
+      doc
+        .save()
+        .rect(x - BLEED, y - BLEED, 2 * CARD_W + 2 * BLEED, CARD_H + 2 * BLEED)
+        .clip();
+      front(doc, x, y, card, options);
+      back(doc, x + CARD_W, y, card, options);
+      doc.restore();
+      marks(doc, x, y, layout);
+    });
+    doc
+      .font('sans')
+      .fontSize(layout.noteSize)
+      .fillColor(COLOR.muted)
+      .text(NOTE, (doc.page.width - layout.noteWidth) / 2, layout.noteTop, {
+        width: layout.noteWidth,
+        align: 'center',
+      });
+  }
   doc.end();
   return doc;
 }
 
-function wordmark(doc: Doc, x: number, yMid: number, color: string) {
+function wordmark(
+  doc: Doc,
+  text: string,
+  x: number,
+  yMid: number,
+  color: string,
+  maxWidth: number,
+) {
+  const [lead, ...words] = text.trim().toUpperCase().split(/\s+/);
+  const rest = words.join(' ');
   const spacing = mm(0.85);
-  const top = yMid - mm(1.3);
+  doc.font('sans-sb').fontSize(mm(2.6));
+  const leadWidth = doc.widthOfString(lead) + lead.length * spacing;
+  const natural = rest
+    ? leadWidth + mm(2.8) + doc.widthOfString(rest) + rest.length * spacing
+    : leadWidth;
+  const k = Math.min(1, maxWidth / natural);
+
+  const top = yMid - mm(1.3) * k;
   doc
-    .font('sans-sb')
-    .fontSize(mm(2.6))
+    .fontSize(mm(2.6) * k)
     .fillColor(color)
-    .text('ALMIS', x, top, { characterSpacing: spacing, lineBreak: false });
-  const dotX = x + doc.widthOfString('ALMIS') + 5 * spacing + mm(0.6);
-  doc.circle(dotX, yMid, mm(0.8)).fill(COLOR.red);
-  doc.fillColor(color).text('HOTEL', dotX + mm(2.2), top, {
-    characterSpacing: spacing,
+    .text(lead, x, top, { characterSpacing: spacing * k, lineBreak: false });
+  if (!rest) return;
+  const dotX =
+    x + doc.widthOfString(lead) + lead.length * spacing * k + mm(0.6) * k;
+  doc.circle(dotX, yMid, mm(0.8) * k).fill(COLOR.red);
+  doc.fillColor(color).text(rest, dotX + mm(2.2) * k, top, {
+    characterSpacing: spacing * k,
     lineBreak: false,
   });
 }
 
-function front(doc: Doc, ox: number, oy: number, card: IdCard) {
+function front(
+  doc: Doc,
+  ox: number,
+  oy: number,
+  card: IdCard,
+  options: IdCardOptions,
+) {
   doc
     .rect(ox - BLEED, oy - BLEED, CARD_W + BLEED, BAND_H + BLEED)
     .fill(COLOR.graphite);
-  wordmark(doc, ox + PAD, oy + BAND_H / 2, '#fff');
+  wordmark(
+    doc,
+    options.wordmark,
+    ox + PAD,
+    oy + BAND_H / 2,
+    '#fff',
+    CARD_W - 2 * PAD - STAFF_LABEL_ROOM,
+  );
   doc
     .font('sans')
     .fontSize(mm(2))
@@ -146,23 +244,24 @@ function front(doc: Doc, ox: number, oy: number, card: IdCard) {
       lineBreak: false,
     });
 
-  const px = ox + (CARD_W - PHOTO_W) / 2;
+  const box = PHOTO_BOX[options.photo];
+  const px = ox + (CARD_W - box.w) / 2;
   const py = oy + BAND_H + mm(3.5);
-  doc.save().rect(px, py, PHOTO_W, PHOTO_H).clip();
+  doc.save().rect(px, py, box.w, box.h).clip();
   if (card.photo) {
     doc.image(card.photo, px, py, {
-      cover: [PHOTO_W, PHOTO_H],
+      cover: [box.w, box.h],
       align: 'center',
       valign: 'center',
     });
   } else {
-    doc.rect(px, py, PHOTO_W, PHOTO_H).fill(COLOR.placeholder);
+    doc.rect(px, py, box.w, box.h).fill(COLOR.placeholder);
     doc
       .font('sans')
       .fontSize(mm(2.2))
       .fillColor(COLOR.muted)
-      .text('Photo', px, py + PHOTO_H / 2 - mm(1.2), {
-        width: PHOTO_W,
+      .text('Photo', px, py + box.h / 2 - mm(1.2), {
+        width: box.w,
         align: 'center',
       });
   }
@@ -170,7 +269,7 @@ function front(doc: Doc, ox: number, oy: number, card: IdCard) {
     .restore()
     .lineWidth(0.4)
     .strokeColor(COLOR.photoEdge)
-    .rect(px, py, PHOTO_W, PHOTO_H)
+    .rect(px, py, box.w, box.h)
     .stroke();
 
   const width = CARD_W - 2 * PAD;
@@ -194,7 +293,7 @@ function front(doc: Doc, ox: number, oy: number, card: IdCard) {
   doc
     .fillColor(COLOR.graphite)
     .fontSize(size)
-    .text(card.name, ox + PAD, py + PHOTO_H + mm(3), {
+    .text(card.name, ox + PAD, py + box.h + mm(3), {
       ...nameOptions(size),
       height,
       ellipsis: true,
@@ -205,16 +304,44 @@ function front(doc: Doc, ox: number, oy: number, card: IdCard) {
     .fontSize(mm(2.7))
     .fillColor(COLOR.red)
     .text(card.role, ox + PAD, doc.y, { width, align: 'center' });
+  const phone = card.phone?.trim();
+  if (box.showPhone && phone && phone !== 'UNKNOWN')
+    doc
+      .moveDown(0.2)
+      .font('sans')
+      .fontSize(mm(2.5))
+      .fillColor(COLOR.muted)
+      .text(phone, ox + PAD, doc.y, { width, align: 'center' });
 }
 
-function back(doc: Doc, ox: number, oy: number, card: IdCard) {
-  wordmark(doc, ox + PAD, oy + mm(7), COLOR.graphite);
+function back(
+  doc: Doc,
+  ox: number,
+  oy: number,
+  card: IdCard,
+  options: IdCardOptions,
+) {
+  const qx = ox + (CARD_W - QR_SIDE) / 2;
+  const qy = oy + mm(15);
+  const panel = BACK_PANEL[options.back];
+  if (panel) {
+    doc.rect(ox, oy - BLEED, CARD_W + BLEED, CARD_H + 2 * BLEED).fill(panel);
+    doc
+      .rect(qx - mm(2), qy - mm(2), QR_SIDE + mm(4), QR_SIDE + mm(4))
+      .fill('#fff');
+  }
+  wordmark(
+    doc,
+    options.wordmark,
+    ox + PAD,
+    oy + mm(7),
+    COLOR.graphite,
+    CARD_W - 2 * PAD,
+  );
 
   const qr = QRCode.create(card.code, { errorCorrectionLevel: 'M' });
   const n = qr.modules.size;
   const cell = QR_SIDE / n;
-  const qx = ox + (CARD_W - QR_SIDE) / 2;
-  const qy = oy + mm(15);
   doc.fillColor(COLOR.graphite);
   // The overlap closes hairline gaps between adjacent modules that some PDF rasterizers leave.
   for (let r = 0; r < n; r++)
@@ -265,7 +392,8 @@ function back(doc: Doc, ox: number, oy: number, card: IdCard) {
     );
 }
 
-function marks(doc: Doc, x: number, y: number) {
+function marks(doc: Doc, x: number, y: number, layout: PageLayout) {
+  const { markGap, markLen } = layout;
   const w = 2 * CARD_W;
   doc.lineWidth(0.3).strokeColor(COLOR.line);
   for (const [cx, sx] of [
@@ -277,24 +405,24 @@ function marks(doc: Doc, x: number, y: number) {
       [y + CARD_H, 1],
     ]) {
       doc
-        .moveTo(cx + sx * MARK_GAP, cy)
-        .lineTo(cx + sx * (MARK_GAP + MARK_LEN), cy)
+        .moveTo(cx + sx * markGap, cy)
+        .lineTo(cx + sx * (markGap + markLen), cy)
         .stroke();
       doc
-        .moveTo(cx, cy + sy * MARK_GAP)
-        .lineTo(cx, cy + sy * (MARK_GAP + MARK_LEN))
+        .moveTo(cx, cy + sy * markGap)
+        .lineTo(cx, cy + sy * (markGap + markLen))
         .stroke();
     }
   }
   const fold = x + CARD_W;
   doc.dash(mm(0.8), { space: mm(0.8) });
   doc
-    .moveTo(fold, y - MARK_GAP)
-    .lineTo(fold, y - MARK_GAP - MARK_LEN)
+    .moveTo(fold, y - markGap)
+    .lineTo(fold, y - markGap - markLen)
     .stroke();
   doc
-    .moveTo(fold, y + CARD_H + MARK_GAP)
-    .lineTo(fold, y + CARD_H + MARK_GAP + MARK_LEN)
+    .moveTo(fold, y + CARD_H + markGap)
+    .lineTo(fold, y + CARD_H + markGap + markLen)
     .stroke();
   doc.undash();
 }
