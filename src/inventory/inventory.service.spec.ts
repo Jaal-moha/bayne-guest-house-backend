@@ -25,7 +25,7 @@ describe('InventoryService stock changes', () => {
 
   it('takes stock out only where enough remains, in one statement', async () => {
     const { tx, service } = make(true, 1);
-    await service.moveOut(3, 2, 'bar');
+    await service.moveOut(3, 2, 'kitchen');
     expect(tx.inventory.updateMany).toHaveBeenCalledWith({
       where: { id: 3, archivedAt: null, quantity: { gte: 2 } },
       data: { quantity: { decrement: 2 } },
