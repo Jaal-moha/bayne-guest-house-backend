@@ -1,4 +1,9 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import {
+  CallHandler,
+  ExecutionContext,
+  Injectable,
+  NestInterceptor,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { map } from 'rxjs';
 
@@ -7,9 +12,13 @@ import { map } from 'rxjs';
 const toJsonNumbers = (value: unknown): unknown => {
   if (Prisma.Decimal.isDecimal(value)) return value.toNumber();
   if (Array.isArray(value)) return value.map(toJsonNumbers);
-  if (value !== null && Object.getPrototypeOf(value) === Object.prototype) {
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    Object.getPrototypeOf(value) === Object.prototype
+  ) {
     return Object.fromEntries(
-      Object.entries(value as object).map(([k, v]) => [k, toJsonNumbers(v)]),
+      Object.entries(value).map(([k, v]) => [k, toJsonNumbers(v)]),
     );
   }
   return value;
