@@ -1,41 +1,37 @@
 import { ForbiddenException } from '@nestjs/common';
-import { PassThrough } from 'stream';
 import { StaffController } from './staff.controller';
 import { StaffService } from './staff.service';
-
-function pdfResponse() {
-  const res = new PassThrough() as PassThrough & { setHeader: jest.Mock };
-  res.setHeader = jest.fn();
-  res.resume();
-  return res;
-}
 
 describe('StaffController.getIdCard', () => {
   const staff7 = {
     id: 7,
     name: 'Hanna',
+    role: 'reception',
     barcode: 'EMP-100007',
     user: { id: 9 },
+    photo: null,
   };
-  const staffService = { findOne: jest.fn().mockResolvedValue(staff7) };
+  const staffService = { findForIdCard: jest.fn().mockResolvedValue(staff7) };
   const controller = new StaffController(
     staffService as unknown as StaffService,
   );
 
   it('refuses a user whose User.id equals the Staff.id but who is linked to other staff', async () => {
     const req = { user: { userId: 7, role: 'reception' } };
-    await expect(
-      controller.getIdCard(7, req, pdfResponse() as any),
-    ).rejects.toThrow(ForbiddenException);
+    await expect(controller.getIdCard(7, req)).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 
-  it('serves the card to the user linked to that staff row', async () => {
-    const req = { user: { userId: 9, role: 'reception' } };
-    const res = pdfResponse();
-    await controller.getIdCard(7, req, res as any);
-    expect(res.setHeader).toHaveBeenCalledWith(
-      'Content-Type',
-      'application/pdf',
-    );
+  it.each([
+    ['the user linked to that staff row', { userId: 9, role: 'reception' }],
+    ['a manager', { userId: 2, role: 'manager' }],
+    ['an admin', { userId: 1, role: 'admin' }],
+  ])('serves the card inline to %s', async (_who, user) => {
+    const file = await controller.getIdCard(7, { user });
+    expect(file.getHeaders()).toMatchObject({
+      type: 'application/pdf',
+      disposition: 'inline; filename="staff-EMP-100007.pdf"',
+    });
   });
 });
