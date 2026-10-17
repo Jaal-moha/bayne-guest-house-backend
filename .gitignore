@@ -59,3 +59,16 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 /public/staff-ids
 # verify skill scratch state and evidence
 /.verify
+
+# On-prem deployment secrets and generated tunnel files
+/deploy/.env.production
+/deploy/.env.preview
+/deploy/cloudflared/config.yml
+/deploy/cloudflared/credentials.json
+
+/deploy/.env.stack
+/deploy/cloudflared/token
+/deploy/previews/
+/deploy/__pycache__/
+/deploy/.env.admin
+/deploy/backups/

@@ -22,5 +22,5 @@ EXPOSE 3000
 # Command to run the application
 CMD ["npm", "run", "start:prod"]
 
-HEALTHCHECK  --interval=5m --timeout=3s \
-  CMD curl --fail --silent "http://localhost:${PORT:-3000}/health/" || exit 1
+HEALTHCHECK --interval=5m --timeout=3s \
+  CMD node -e "fetch('http://localhost:' + (process.env.PORT || '3000') + '/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"

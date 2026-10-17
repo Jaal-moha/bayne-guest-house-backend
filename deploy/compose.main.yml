@@ -1,0 +1,87 @@
+name: almis-main
+
+services:
+  edge:
+    image: traefik:v3.6
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=almis-edge
+      - --entrypoints.web.address=:80
+      - --ping=true
+    ports:
+      - 127.0.0.1:8080:80
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [edge]
+    healthcheck:
+      test: [CMD, traefik, healthcheck, --ping]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    networks: [database]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    image: ${APP_IMAGE:?APP_IMAGE must be set}
+    restart: unless-stopped
+    init: true
+    env_file: [./.env.production]
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [edge, database]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: almis-edge
+      traefik.http.routers.almis-main.rule: Host(`${MAIN_HOST:?MAIN_HOST must be set}`)
+      traefik.http.routers.almis-main.entrypoints: web
+      traefik.http.services.almis-main.loadbalancer.server.port: "3000"
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 12
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.1
+    restart: unless-stopped
+    user: "${HOST_UID:?HOST_UID must be set}:${HOST_GID:?HOST_GID must be set}"
+    command: tunnel --no-autoupdate --protocol http2 run --token-file /run/secrets/tunnel-token
+    depends_on:
+      edge:
+        condition: service_healthy
+    volumes:
+      - ./cloudflared/token:/run/secrets/tunnel-token:ro
+    networks: [edge]
+
+networks:
+  edge:
+    name: almis-edge
+  database:
+    internal: true
+
+volumes:
+  postgres:
+    external: true
+    name: ${POSTGRES_VOLUME:-almis-main_postgres}

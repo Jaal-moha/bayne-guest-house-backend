@@ -6,9 +6,10 @@ permissions:
 concurrency:
   # A group holds one pending run, so a shared push group would let a newer push replace an untested one.
   group: ci-${{ github.ref }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
   push:
@@ -44,3 +45,23 @@ jobs:
       - run: npx jest
       - run: npx prisma migrate deploy
       - run: npm run test:integration
+
+  deploy-main:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: test
+    uses: ./.github/workflows/deploy-main.yml
+    permissions:
+      contents: read
+      actions: read
+
+  deploy-preview:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: test
+    uses: ./.github/workflows/deploy-preview.yml
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      head_sha: ${{ github.event.pull_request.head.sha }}

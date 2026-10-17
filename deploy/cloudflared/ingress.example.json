@@ -1,0 +1,9 @@
+{
+  "config": {
+    "ingress": [
+      { "hostname": "api.almishotel.com", "service": "http://edge:80" },
+      { "hostname": "*.almishotel.com", "service": "http://edge:80" },
+      { "service": "http_status:404" }
+    ]
+  }
+}
