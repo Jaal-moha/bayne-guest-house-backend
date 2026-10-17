@@ -10,3 +10,7 @@ dist
 .claude
 public/staff-ids
 coverage
+
+# Deployment credentials and host configuration never belong in the app image.
+deploy
+.github

@@ -1,0 +1,53 @@
+# Always pass an explicit project name, almis-preview-pr-N.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    networks: [database]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    image: ${PREVIEW_IMAGE:?PREVIEW_IMAGE must be set}
+    restart: unless-stopped
+    init: true
+    env_file: ["${PREVIEW_ENV_FILE:?PREVIEW_ENV_FILE must be set}"]
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [edge, database]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=almis-edge
+      - traefik.http.routers.${PREVIEW_ID:?PREVIEW_ID must be set}.rule=Host(`${PREVIEW_HOST:?PREVIEW_HOST must be set}`)
+      - traefik.http.routers.${PREVIEW_ID}.entrypoints=web
+      - traefik.http.services.${PREVIEW_ID}.loadbalancer.server.port=3000
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 12
+
+networks:
+  edge:
+    external: true
+    name: almis-edge
+  database:
+    internal: true
+
+volumes:
+  postgres:

@@ -1,0 +1,16 @@
+[Unit]
+Description=Almis GitHub deployment runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=%h/.local/share/almis/runner
+ExecStart=%h/.local/share/almis/runner/run.sh
+Environment="PATH=%h/.local/share/mise/installs/node/26.8.1/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Restart=always
+RestartSec=10
+TimeoutStopSec=300
+KillMode=mixed
+
+[Install]
+WantedBy=default.target
