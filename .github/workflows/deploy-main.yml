@@ -61,5 +61,15 @@ jobs:
           python3 "$files/manage.py" prepare
           python3 "$HOME/.local/share/almis/deploy/manage.py" main \
             --image "almis-backend:main-$COMMIT"
-          curl --fail --silent --show-error --retry 5 --retry-delay 3 \
-            https://api.almishotel.com/health
+          if ! curl --fail --silent --show-error --connect-timeout 10 --max-time 20 \
+            --retry 5 --retry-delay 3 https://api.almishotel.com/health; then
+            # The host's mobile DNS resolver can cache a missing A record.
+            # Retrieve a current public IPv4 address while preserving TLS verification.
+            address=$(curl --fail --silent --show-error --max-time 20 \
+              -H 'accept: application/dns-json' \
+              'https://cloudflare-dns.com/dns-query?name=api.almishotel.com&type=A' | \
+              python3 -c 'import json,sys; print(next(a["data"] for a in json.load(sys.stdin).get("Answer", []) if a["type"] == 1))')
+            curl --fail --silent --show-error --connect-timeout 10 --max-time 20 \
+              --retry 5 --retry-delay 3 --resolve "api.almishotel.com:443:$address" \
+              https://api.almishotel.com/health
+          fi

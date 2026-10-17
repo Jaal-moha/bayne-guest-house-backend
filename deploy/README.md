@@ -69,6 +69,8 @@ The local runner never checks out or executes PR host scripts. It loads the buil
 
 The preview job checks that the PR is still open and its head SHA still matches before starting it. Main checks that its commit is still the main branch head. A host lock serializes mutations, and workflows do not cancel a running deployment midway through migrations. Preview comments appear only after the container becomes healthy and DNS creation succeeds.
 
+The main job also checks public HTTPS. If the host resolver returns stale DNS, it retries with an IPv4 address retrieved from Cloudflare DNS over HTTPS. Certificate verification and the public hostname remain enabled.
+
 To create or remove a preview manually:
 
 ```bash
