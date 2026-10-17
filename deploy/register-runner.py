@@ -42,9 +42,14 @@ def main():
     if not digest.startswith('sha256:'):
         raise SystemExit('Release has no SHA-256 digest; verify the runner archive manually.')
     archive = root / asset['name']
-    with urllib.request.urlopen(asset['browser_download_url'], timeout=60) as source, archive.open('wb') as output:
-        while chunk := source.read(1024 * 1024):
-            output.write(chunk)
+    cached = False
+    if archive.exists() and archive.stat().st_size == asset['size']:
+        with archive.open('rb') as downloaded:
+            cached = hashlib.file_digest(downloaded, 'sha256').hexdigest() == digest.removeprefix('sha256:')
+    if not cached:
+        with urllib.request.urlopen(asset['browser_download_url'], timeout=60) as source, archive.open('wb') as output:
+            while chunk := source.read(1024 * 1024):
+                output.write(chunk)
     with archive.open('rb') as downloaded:
         actual = hashlib.file_digest(downloaded, 'sha256').hexdigest()
     if actual != digest.removeprefix('sha256:'):
