@@ -50,7 +50,7 @@ export async function tutorialsConfig(
     );
   if (secret.length < MIN_SECRET_LENGTH) {
     throw new Error(
-      `TUTORIALS_SIGNING_SECRET must be at least ${MIN_SECRET_LENGTH} characters`,
+      `${secretFile ? 'TUTORIALS_SIGNING_SECRET_FILE' : 'TUTORIALS_SIGNING_SECRET'} must be at least ${MIN_SECRET_LENGTH} characters`,
     );
   }
   return { dir, secret };
@@ -63,7 +63,7 @@ type Loaded = { manifest: Manifest; files: Set<string> } | null;
 @Injectable()
 export class TutorialsService {
   private readonly logger = new Logger(TutorialsService.name);
-  private cached?: { key: string; result: Loaded | ManifestError };
+  private cached?: { key: string; result: Promise<Loaded> };
 
   constructor(
     @Inject(TUTORIALS_CONFIG) private readonly config: TutorialsConfig,
@@ -109,21 +109,28 @@ export class TutorialsService {
       (s) => `${s.ino}:${s.size}:${s.mtimeMs}`,
       () => 'absent',
     );
-    if (this.cached?.key !== key) {
-      const result = await readManifest(dir).then(
-        (manifest): Loaded | ManifestError =>
-          manifest ? { manifest, files: mediaFiles(manifest) } : null,
-        (err: unknown) => {
-          if (err instanceof ManifestError) return err;
-          throw err;
-        },
-      );
-      if (result instanceof ManifestError) this.logger.error(result.message);
-      this.cached = { key, result };
+    let entry = this.cached;
+    if (entry?.key !== key) {
+      const loading = {
+        key,
+        result: readManifest(dir).then(
+          (manifest): Loaded =>
+            manifest ? { manifest, files: mediaFiles(manifest) } : null,
+        ),
+      };
+      // Concurrent callers share this load; a failure is dropped so the next request retries.
+      loading.result.catch((err: unknown) => {
+        if (this.cached === loading) this.cached = undefined;
+        if (err instanceof ManifestError) this.logger.error(err.message);
+      });
+      entry = this.cached = loading;
     }
-    const { result } = this.cached;
-    if (result instanceof ManifestError)
-      throw new ServiceUnavailableException('Tutorial manifest is invalid');
-    return result;
+    try {
+      return await entry.result;
+    } catch (err) {
+      if (err instanceof ManifestError)
+        throw new ServiceUnavailableException('Tutorial manifest is invalid');
+      throw err;
+    }
   }
 }

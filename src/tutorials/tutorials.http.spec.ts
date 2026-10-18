@@ -307,6 +307,20 @@ describe('Tutorials over HTTP', () => {
       ]);
     });
 
+    it('retries a manifest whose media was missing once the file appears', async () => {
+      const aside = join(dir, 'aside.mp4');
+      renameSync(join(dir, STORE_VIDEO), aside);
+      publish(original);
+      await list(tokens.reception).expect(503);
+      await media(signed(STORE_VIDEO)).expect(503);
+      renameSync(aside, join(dir, STORE_VIDEO));
+      expect(names((await list(tokens.reception).expect(200)).body)).toEqual([
+        'anyone-login-wrong-password',
+        'reception-create-booking',
+      ]);
+      await media(signed(STORE_VIDEO)).expect(200);
+    });
+
     it('returns an empty list while no manifest is published', async () => {
       rmSync(manifestPath());
       expect((await list(tokens.reception).expect(200)).body).toEqual([]);

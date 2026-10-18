@@ -76,6 +76,20 @@ describe('tutorial signing key configuration', () => {
     },
   );
 
+  it('names the key file when the mounted key is too short', async () => {
+    writeFileSync(keyFile, 'short\n');
+    await expect(
+      tutorialsConfig(
+        config({
+          TUTORIALS_DIR: dir,
+          TUTORIALS_SIGNING_SECRET_FILE: keyFile,
+        }),
+      ),
+    ).rejects.toThrow(
+      'TUTORIALS_SIGNING_SECRET_FILE must be at least 32 characters',
+    );
+  });
+
   it('does not read a configured key file while the store is disabled', async () => {
     await expect(
       tutorialsConfig(
