@@ -21,7 +21,7 @@ import request from 'supertest';
 import type { Response as TestResponse } from 'superagent';
 import type { Server } from 'node:http';
 import { parseManifest } from './tutorial-manifest';
-import type { TutorialView } from './tutorials.service';
+import { MEDIA_RETRY_MS, type TutorialView } from './tutorials.service';
 import { fakeUsers } from '../auth/fake-users';
 import { JwtStrategy } from '../auth/jwt.strategy';
 import { UsersService } from '../users/users.service';
@@ -277,7 +277,10 @@ describe('Tutorials over HTTP', () => {
       renameSync(join(dir, 'manifest.json.tmp'), manifestPath());
     };
     const original = readFileSync(join(FIXTURES, 'manifest.json'), 'utf8');
-    afterEach(() => publish(original));
+    afterEach(() => {
+      jest.restoreAllMocks();
+      publish(original);
+    });
 
     it('picks up a renamed-in manifest without a restart', async () => {
       const manifest = parseManifest(JSON.parse(original));
@@ -307,13 +310,16 @@ describe('Tutorials over HTTP', () => {
       ]);
     });
 
-    it('retries a manifest whose media was missing once the file appears', async () => {
+    it('retries a manifest whose media was missing once the file appears and the retry window passes', async () => {
+      let now = Date.now();
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
       const aside = join(dir, 'aside.mp4');
       renameSync(join(dir, STORE_VIDEO), aside);
       publish(original);
       await list(tokens.reception).expect(503);
       await media(signed(STORE_VIDEO)).expect(503);
       renameSync(aside, join(dir, STORE_VIDEO));
+      now += MEDIA_RETRY_MS;
       expect(names((await list(tokens.reception).expect(200)).body)).toEqual([
         'anyone-login-wrong-password',
         'reception-create-booking',

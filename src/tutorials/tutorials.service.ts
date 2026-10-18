@@ -14,6 +14,7 @@ import {
   MANIFEST_FILE,
   Manifest,
   ManifestError,
+  ManifestMediaError,
   Tutorial,
   mediaFiles,
   readManifest,
@@ -60,10 +61,20 @@ export type TutorialView = Tutorial & { videoUrl: string; posterUrl: string };
 
 type Loaded = { manifest: Manifest; files: Set<string> } | null;
 
+/**
+ * How long a manifest whose media failed to load waits before the next request retries it.
+ * The publisher copies media before it renames the manifest in, so a media error means a copy
+ * is still in flight; each retry re-hashes every video (1 to 2 s for the 42-entry store).
+ */
+export const MEDIA_RETRY_MS = 5_000;
+
+type Load = { key: string; result: Promise<Loaded>; retryAt?: number };
+
 @Injectable()
 export class TutorialsService {
   private readonly logger = new Logger(TutorialsService.name);
-  private cached?: { key: string; result: Promise<Loaded> };
+  private cached?: Load;
+  private logged?: string;
 
   constructor(
     @Inject(TUTORIALS_CONFIG) private readonly config: TutorialsConfig,
@@ -110,18 +121,26 @@ export class TutorialsService {
       () => 'absent',
     );
     let entry = this.cached;
-    if (entry?.key !== key) {
-      const loading = {
+    if (entry?.key !== key || Date.now() >= (entry.retryAt ?? Infinity)) {
+      const loading: Load = {
         key,
         result: readManifest(dir).then(
           (manifest): Loaded =>
             manifest ? { manifest, files: mediaFiles(manifest) } : null,
         ),
       };
-      // Concurrent callers share this load; a failure is dropped so the next request retries.
+      // Concurrent callers share this load. A parse error stays cached until the manifest
+      // changes; any other failure is retried once MEDIA_RETRY_MS has passed.
       loading.result.catch((err: unknown) => {
-        if (this.cached === loading) this.cached = undefined;
-        if (err instanceof ManifestError) this.logger.error(err.message);
+        if (
+          !(err instanceof ManifestError) ||
+          err instanceof ManifestMediaError
+        )
+          loading.retryAt = Date.now() + MEDIA_RETRY_MS;
+        if (!(err instanceof ManifestError)) return;
+        const seen = `${key}\n${err.message}`;
+        if (this.logged !== seen) this.logger.error(err.message);
+        this.logged = seen;
       });
       entry = this.cached = loading;
     }

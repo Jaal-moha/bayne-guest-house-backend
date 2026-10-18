@@ -27,6 +27,9 @@ export type Manifest = { version: 1; tutorials: Tutorial[] };
 
 export class ManifestError extends Error {}
 
+/** A named media file is missing or does not match its checksum; it may still be landing. */
+export class ManifestMediaError extends ManifestError {}
+
 const ROLES = new Set<string>(Object.values(Role));
 const PLAIN_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -173,7 +176,7 @@ export async function readManifest(dir: string): Promise<Manifest | null> {
   for (const file of mediaFiles(manifest)) {
     const handle = await openMediaFile(dir, file);
     if (!handle) {
-      throw new ManifestError(
+      throw new ManifestMediaError(
         `${MANIFEST_FILE} names "${file}", which is not a regular file in ${dir}`,
       );
     }
@@ -189,7 +192,7 @@ export async function readManifest(dir: string): Promise<Manifest | null> {
   }
   for (const tutorial of manifest.tutorials) {
     if (hashes.get(tutorial.video) !== tutorial.sha256) {
-      throw new ManifestError(
+      throw new ManifestMediaError(
         `${MANIFEST_FILE} checksum does not match "${tutorial.video}"`,
       );
     }
