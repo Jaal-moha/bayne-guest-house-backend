@@ -125,6 +125,16 @@ describe('readManifest', () => {
     await expect(readManifest(dir)).rejects.toThrow(ManifestError);
   });
 
+  it('rejects video bytes that do not match the declared sha256', async () => {
+    writeFileSync(
+      join(dir, 'store-receive-stock.ca14fc82.mp4'),
+      'corrupted-video',
+    );
+    await expect(readManifest(dir)).rejects.toThrow(
+      'checksum does not match "store-receive-stock.ca14fc82.mp4"',
+    );
+  });
+
   it('rejects malformed JSON as a ManifestError', async () => {
     writeFileSync(join(dir, 'manifest.json'), '{"version": 1, "tutorials": [');
     await expect(readManifest(dir)).rejects.toThrow(

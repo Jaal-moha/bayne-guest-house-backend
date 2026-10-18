@@ -1,4 +1,7 @@
-import { lstat, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { pipeline } from 'node:stream/promises';
+import { openMediaFile } from './media-file';
 import { join } from 'node:path';
 import { Role } from '@prisma/client';
 
@@ -147,14 +150,6 @@ export function mediaFiles(manifest: Manifest): Set<string> {
   );
 }
 
-async function isRegularFile(path: string): Promise<boolean> {
-  try {
-    return (await lstat(path)).isFile();
-  } catch {
-    return false;
-  }
-}
-
 export async function readManifest(dir: string): Promise<Manifest | null> {
   let body: string;
   try {
@@ -174,10 +169,28 @@ export async function readManifest(dir: string): Promise<Manifest | null> {
   }
 
   const manifest = parseManifest(json);
+  const hashes = new Map<string, string>();
   for (const file of mediaFiles(manifest)) {
-    if (!(await isRegularFile(join(dir, file)))) {
+    const handle = await openMediaFile(dir, file);
+    if (!handle) {
       throw new ManifestError(
         `${MANIFEST_FILE} names "${file}", which is not a regular file in ${dir}`,
+      );
+    }
+    try {
+      if (file.endsWith('.mp4')) {
+        const hash = createHash('sha256');
+        await pipeline(handle.createReadStream({ autoClose: false }), hash);
+        hashes.set(file, hash.digest('hex'));
+      }
+    } finally {
+      await handle.close();
+    }
+  }
+  for (const tutorial of manifest.tutorials) {
+    if (hashes.get(tutorial.video) !== tutorial.sha256) {
+      throw new ManifestError(
+        `${MANIFEST_FILE} checksum does not match "${tutorial.video}"`,
       );
     }
   }

@@ -105,6 +105,7 @@ describe('signed media URLs', () => {
     ['missing sig', String(NOW + 60), undefined],
     ['repeated exp', [String(NOW + 60), String(NOW + 60)], 'sig'],
     ['non-numeric exp', '1e12', 'sig'],
+    ['noncanonical exp', `0${NOW + 3600}`, 'sig'],
     ['short sig', String(NOW + 60), 'abc'],
   ])('rejects %s', (_label, exp, sig) => {
     expect(isValidMediaSignature(SECRET, FILE, exp, sig, NOW)).toBe(false);

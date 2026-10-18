@@ -6,6 +6,9 @@ import { Test } from '@nestjs/testing';
 import type { Role } from '@prisma/client';
 import {
   cpSync,
+  copyFileSync,
+  symlinkSync,
+  unlinkSync,
   mkdtempSync,
   readFileSync,
   renameSync,
@@ -185,6 +188,23 @@ describe('Tutorials over HTTP', () => {
 
       const poster = await media(stock.posterUrl).expect(200);
       expect(poster.headers['content-type']).toBe('image/jpeg');
+    });
+
+    it('refuses a cached media path replaced with a symlink', async () => {
+      await list(tokens.store).expect(200);
+      const outside = mkdtempSync(join(tmpdir(), 'tutorial-outside-'));
+      const target = join(outside, 'key');
+      writeFileSync(target, 'outside-secret');
+      const path = join(dir, STORE_VIDEO);
+      unlinkSync(path);
+      symlinkSync(target, path);
+      try {
+        await media(signed(STORE_VIDEO)).expect(404);
+      } finally {
+        unlinkSync(path);
+        copyFileSync(join(FIXTURES, STORE_VIDEO), path);
+        rmSync(outside, { recursive: true, force: true });
+      }
     });
 
     it('answers a Range request with 206 and the exact slice', async () => {
