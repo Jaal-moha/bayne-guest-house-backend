@@ -70,11 +70,20 @@ export const MEDIA_RETRY_MS = 5_000;
 
 type Load = { key: string; result: Promise<Loaded>; retryAt?: number };
 
+function isStorageError(err: unknown): err is NodeJS.ErrnoException {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    typeof err.code === 'string'
+  );
+}
+
 @Injectable()
 export class TutorialsService {
   private readonly logger = new Logger(TutorialsService.name);
   private cached?: Load;
-  private logged?: string;
+  private loggedKey?: string;
 
   constructor(
     @Inject(TUTORIALS_CONFIG) private readonly config: TutorialsConfig,
@@ -137,10 +146,12 @@ export class TutorialsService {
           err instanceof ManifestMediaError
         )
           loading.retryAt = Date.now() + MEDIA_RETRY_MS;
-        if (!(err instanceof ManifestError)) return;
-        const seen = `${key}\n${err.message}`;
-        if (this.logged !== seen) this.logger.error(err.message);
-        this.logged = seen;
+        const message =
+          err instanceof ManifestError
+            ? err.message
+            : `Tutorial storage could not be read (${isStorageError(err) ? err.code : 'unknown'})`;
+        if (this.loggedKey !== key) this.logger.error(message);
+        this.loggedKey = key;
       });
       entry = this.cached = loading;
     }
@@ -149,7 +160,7 @@ export class TutorialsService {
     } catch (err) {
       if (err instanceof ManifestError)
         throw new ServiceUnavailableException('Tutorial manifest is invalid');
-      throw err;
+      throw new ServiceUnavailableException('Tutorial storage is unavailable');
     }
   }
 }

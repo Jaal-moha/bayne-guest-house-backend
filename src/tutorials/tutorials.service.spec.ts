@@ -1,5 +1,6 @@
 import {
   cpSync,
+  chmodSync,
   mkdtempSync,
   readFileSync,
   renameSync,
@@ -72,6 +73,77 @@ describe('TutorialsService manifest loading', () => {
         (err: unknown) => err,
       );
 
+    it.each(['unreadable manifest', 'hash stream IO error'])(
+      'bounds and retries an %s, then heals without republishing',
+      async (failure) => {
+        const manifest = join(dir, 'manifest.json');
+        const read = jest.spyOn(manifestModule, 'readManifest');
+        const logged = jest
+          .spyOn(Logger.prototype, 'error')
+          .mockImplementation(() => undefined);
+        const open = mediaModule.openMediaFile;
+        let broken = true;
+        if (failure === 'unreadable manifest') {
+          chmodSync(manifest, 0);
+        } else {
+          jest
+            .spyOn(mediaModule, 'openMediaFile')
+            .mockImplementation(async (directory, file) => {
+              const handle = await open(directory, file);
+              if (handle && file === STORE_VIDEO && broken) {
+                const stream = handle.createReadStream({ autoClose: false });
+                jest
+                  .spyOn(handle, 'createReadStream')
+                  .mockImplementation(() => {
+                    stream.destroy(
+                      Object.assign(new Error('raw disk error'), {
+                        code: 'EIO',
+                      }),
+                    );
+                    return stream;
+                  });
+              }
+              return handle;
+            });
+        }
+        try {
+          const results = await Promise.all(
+            Array.from({ length: 100 }, (_, i) =>
+              i % 2
+                ? media()
+                : service.listFor('reception').catch((err: unknown) => err),
+            ),
+          );
+          for (const result of results) {
+            expect(result).toBeInstanceOf(ServiceUnavailableException);
+          }
+          expect(read).toHaveBeenCalledTimes(1);
+          expect(logged).toHaveBeenCalledTimes(1);
+
+          advance(MEDIA_RETRY_MS);
+          expect(await media()).toBeInstanceOf(ServiceUnavailableException);
+          expect(read).toHaveBeenCalledTimes(2);
+          expect(logged).toHaveBeenCalledTimes(1);
+
+          chmodSync(manifest, 0o644);
+          broken = false;
+          advance(MEDIA_RETRY_MS - 1);
+          expect(await media()).toBeInstanceOf(ServiceUnavailableException);
+          expect(read).toHaveBeenCalledTimes(2);
+          advance(1);
+          const recovered = await Promise.all(
+            Array.from({ length: 10 }, () => service.listFor('reception')),
+          );
+          expect(recovered.every((list) => list.length === 2)).toBe(true);
+          expect(await media()).toBe(dir);
+          expect(read).toHaveBeenCalledTimes(3);
+          expect(logged).toHaveBeenCalledTimes(1);
+        } finally {
+          chmodSync(manifest, 0o644);
+        }
+      },
+    );
+
     it('reads and logs a manifest that does not parse once, however long it stays broken', async () => {
       publish('{');
       const read = jest.spyOn(manifestModule, 'readManifest');
@@ -86,6 +158,24 @@ describe('TutorialsService manifest loading', () => {
 
       expect(read).toHaveBeenCalledTimes(1);
       expect(logged).toHaveBeenCalledTimes(1);
+    });
+
+    it('maps an unexpected storage failure to a bounded 503 and logs it once per key', async () => {
+      const read = jest
+        .spyOn(manifestModule, 'readManifest')
+        .mockRejectedValue(new Error('raw disk error'));
+      const logged = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+
+      expect(await media()).toBeInstanceOf(ServiceUnavailableException);
+      expect(await media()).toBeInstanceOf(ServiceUnavailableException);
+
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(logged).toHaveBeenCalledTimes(1);
+      expect(logged).toHaveBeenCalledWith(
+        'Tutorial storage could not be read (unknown)',
+      );
     });
 
     it('hashes a mismatched video once per retry window, then serves it once the file is fixed', async () => {

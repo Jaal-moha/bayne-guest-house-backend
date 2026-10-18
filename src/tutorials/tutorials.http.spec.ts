@@ -1,4 +1,4 @@
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -6,6 +6,7 @@ import { Test } from '@nestjs/testing';
 import type { Role } from '@prisma/client';
 import {
   cpSync,
+  chmodSync,
   copyFileSync,
   symlinkSync,
   unlinkSync,
@@ -308,6 +309,41 @@ describe('Tutorials over HTTP', () => {
         'anyone-login-wrong-password',
         'reception-create-booking',
       ]);
+    });
+
+    it('bounds anonymous unreadable-manifest failures and heals after five seconds', async () => {
+      let now = Date.now();
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
+      const logged = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+      publish(original);
+      chmodSync(manifestPath(), 0);
+      try {
+        for (let i = 0; i < 100; i++) {
+          const res = await request(app.getHttpServer() as Server)
+            .get(`/tutorials/media/${STORE_VIDEO}`)
+            .expect(503);
+          expect(res.body).toEqual({
+            statusCode: 503,
+            message: 'Tutorial storage is unavailable',
+            error: 'Service Unavailable',
+          });
+        }
+        expect(logged).toHaveBeenCalledTimes(1);
+        expect(logged).toHaveBeenCalledWith(
+          'Tutorial storage could not be read (EACCES)',
+        );
+        chmodSync(manifestPath(), 0o644);
+        now += MEDIA_RETRY_MS - 1;
+        await list(tokens.reception).expect(503);
+        now += 1;
+        await list(tokens.reception).expect(200);
+        await media(signed(STORE_VIDEO)).expect(200);
+        expect(logged).toHaveBeenCalledTimes(1);
+      } finally {
+        chmodSync(manifestPath(), 0o644);
+      }
     });
 
     it('retries a manifest whose media was missing once the file appears and the retry window passes', async () => {
