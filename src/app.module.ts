@@ -11,6 +11,7 @@ import { StaffModule } from './staff/staff.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { StatsModule } from './stats/stats.module';
+import { TutorialsModule } from './tutorials/tutorials.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -33,6 +34,7 @@ import { DecimalToNumberInterceptor } from './prisma/decimal-to-number.intercept
     InventoryModule,
     StaffModule,
     StatsModule,
+    TutorialsModule,
   ],
   controllers: [AppController],
   providers: [
