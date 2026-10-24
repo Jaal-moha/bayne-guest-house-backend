@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "tutorials": [
+    {
+      "name": "admin-add-staff",
+      "title": "Add a staff member",
+      "summary": "Add Hodan Warsame as a receptionist and print the ID card.",
+      "group": "admin",
+      "primaryRole": "admin",
+      "audience": ["admin", "manager"],
+      "pages": ["/staff"],
+      "durationSec": 1,
+      "video": "reception-create-booking.6d3ab696.mp4",
+      "poster": "reception-create-booking.24f394c2.jpg",
+      "sha256": "6d3ab696ed6f24da3051af36efc7ca1493b716583becf061f76697f444c8ef19",
+      "recordedAt": "2026-10-18T09:00:00.000Z",
+      "sourceCommit": "5ee1188"
+    },
+    {
+      "name": "anyone-login-wrong-password",
+      "title": "Sign in after a wrong password",
+      "summary": "Mistyped passwords show an error and keep the email filled in.",
+      "group": "sign-in",
+      "primaryRole": "Any user",
+      "audience": ["admin", "manager", "reception", "housekeeping", "barista", "security", "finance", "store"],
+      "pages": ["/login"],
+      "durationSec": 2,
+      "video": "store-receive-stock.ca14fc82.mp4",
+      "poster": "store-receive-stock.ab2a9e4d.jpg",
+      "sha256": "ca14fc827bff2053439f34e2193b8987ec2bf0e85278194877fbe43927e2769a",
+      "recordedAt": "2026-10-18T09:00:00.000Z",
+      "sourceCommit": "5ee1188"
+    },
+    {
+      "name": "reception-create-booking",
+      "title": "Book a room for a walk-in guest",
+      "summary": "Book room 101 for Abdirahman Farah for two nights.",
+      "group": "reception",
+      "primaryRole": "reception",
+      "audience": ["reception", "manager", "admin"],
+      "pages": ["/bookings"],
+      "durationSec": 1,
+      "video": "reception-create-booking.6d3ab696.mp4",
+      "poster": "reception-create-booking.24f394c2.jpg",
+      "sha256": "6d3ab696ed6f24da3051af36efc7ca1493b716583becf061f76697f444c8ef19",
+      "recordedAt": "2026-10-18T10:30:00.000Z",
+      "sourceCommit": "5ee1188"
+    },
+    {
+      "name": "store-receive-stock",
+      "title": "Receive a stock delivery",
+      "summary": "Ayaan Abdi records 20 bags of rice from the supplier.",
+      "group": "store",
+      "primaryRole": "store",
+      "audience": ["store", "manager", "admin"],
+      "pages": ["/inventory"],
+      "durationSec": 2,
+      "video": "store-receive-stock.ca14fc82.mp4",
+      "poster": "store-receive-stock.ab2a9e4d.jpg",
+      "sha256": "ca14fc827bff2053439f34e2193b8987ec2bf0e85278194877fbe43927e2769a",
+      "recordedAt": "2026-10-18T11:15:00.000Z",
+      "sourceCommit": "5ee1188"
+    }
+  ]
+}
