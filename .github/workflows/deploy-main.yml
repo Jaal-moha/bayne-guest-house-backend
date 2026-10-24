@@ -1,4 +1,4 @@
-name: Deploy main
+name: Deploy release
 
 on:
   workflow_call:
@@ -47,13 +47,14 @@ jobs:
         with:
           name: main-deployment
           path: ${{ runner.temp }}/almis-main
-      - name: Deploy the tested main image
+      - name: Deploy the tested release image
         run: |
           set -euo pipefail
-          current=$(gh api "repos/$REPOSITORY/git/ref/heads/main" --jq '.object.sha')
-          if [[ "$current" != "$COMMIT" ]]; then
-            echo "Skipping a superseded main commit."
-            exit 0
+          # A release must be a commit that main already contains.
+          status=$(gh api "repos/$REPOSITORY/compare/main...$COMMIT" --jq '.status')
+          if [[ "$status" != identical && "$status" != behind ]]; then
+            echo "::error::$GITHUB_REF_NAME points at $COMMIT, which is not on main."
+            exit 1
           fi
           docker load -i "$RUNNER_TEMP/almis-main/image.tar"
           files=$(mktemp -d "$RUNNER_TEMP/almis-config.XXXXXX")

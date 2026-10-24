@@ -14,6 +14,7 @@ on:
     branches: [main]
   push:
     branches: [main]
+    tags: ['v*']
 
 jobs:
   test:
@@ -46,8 +47,10 @@ jobs:
       - run: npx prisma migrate deploy
       - run: npm run test:integration
 
+  # Production deploys a release tag, not every merge. Re-run this workflow on an
+  # older tag to roll back: gh workflow run CI --ref v1.2.3
   deploy-main:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
     needs: test
     uses: ./.github/workflows/deploy-main.yml
     permissions:

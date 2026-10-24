@@ -53,7 +53,17 @@ Pending Prisma migrations run before the API starts. The deployment waits for Po
 
 ## Continuous deployment
 
-CI runs unit tests, type checking, migrations, and integration tests before calling a deployment workflow. Builds run on GitHub-hosted runners. They pass a Docker image to the local deployment runner using a short-lived Actions artifact. No GHCR password, deployment SSH key, or repository secret is needed.
+CI runs unit tests, type checking, migrations, and integration tests before calling a deployment workflow. Merging to `main` runs CI only. Production deploys when someone pushes a release tag:
+
+```bash
+git switch main && git pull --ff-only
+git tag -a v1.4.0 -m "v1.4.0"
+git push fork v1.4.0
+```
+
+The tag must point at a commit that `main` already contains, or the deployment fails before touching the host. CI runs again on the tagged commit first. To roll back, re-run CI on an older tag with `gh workflow run CI --ref v1.3.0`. Rolling back the image does not undo database migrations.
+
+Builds run on GitHub-hosted runners. They pass a Docker image to the local deployment runner using a short-lived Actions artifact. No GHCR password, deployment SSH key, or repository secret is needed.
 
 A repository admin must register a self-hosted Linux x64 runner on this machine with label `almis-onprem`. The runner must run as the host user who owns `~/.local/share/almis/deploy` and has Docker access. Its PATH must include `docker`, `python3`, `cf`, `gh`, and their runtime dependencies. Use the installation commands GitHub provides under:
 
@@ -65,9 +75,9 @@ Run it under a user systemd service with `Restart=always`, an explicit PATH cont
 
 When upstream admin access arrives, stop the runner service, remove the fork registration using the runner's `config.sh remove` with a freshly obtained removal token, and register against `Jaal-moha/bayne-guest-house-backend`. Keep the same runner label, runtime directory, tunnel, and database. Merge these deployment workflows upstream before switching triggers. Do not run production triggers from both repositories simultaneously.
 
-The local runner never checks out or executes PR host scripts. It loads the built container image and uses the deployment script installed by `main`. Same-repository contributors are trusted to run preview application code in containers. Fork PRs only run CI. Keep workflow changes reviewed and do not enable fork deployment jobs on this persistent runner.
+The local runner never checks out or executes PR host scripts. It loads the built container image and uses the deployment script installed by the last release. Same-repository contributors are trusted to run preview application code in containers. Fork PRs only run CI. Keep workflow changes reviewed and do not enable fork deployment jobs on this persistent runner.
 
-The preview job checks that the PR is still open and its head SHA still matches before starting it. Main checks that its commit is still the main branch head. A host lock serializes mutations, and workflows do not cancel a running deployment midway through migrations. Preview comments appear only after the container becomes healthy and DNS creation succeeds.
+The preview job checks that the PR is still open and its head SHA still matches before starting it. A release checks that `main` contains its commit. Releases run one at a time. A newer waiting release replaces an older waiting one. A host lock serializes mutations, and workflows do not cancel a running deployment midway through migrations. Preview comments appear only after the container becomes healthy and DNS creation succeeds.
 
 The main job also checks public HTTPS. If the host resolver returns stale DNS, it retries with an IPv4 address retrieved from Cloudflare DNS over HTTPS. Certificate verification and the public hostname remain enabled.
 
