@@ -12,6 +12,8 @@ ADMIN_PASSWORD="admin123"
 PG_PKG="@embedded-postgres/linux-x64@16.14.0-beta.17"
 PG_HOME="$ROOT/.verify/tools/node_modules/@embedded-postgres/linux-x64"
 PG_BIN="$PG_HOME/native/bin"
+declare -A DEMO_NAME=([admin]="Abdirahman Ali" [manager]="Mohamed Hassan" [reception]="Ayaan Hassan" [housekeeping]="Fadumo Ahmed"
+  [barista]="Abdi Yusuf" [security]="Abdullahi Omar" [finance]="Maryan Ibrahim" [store]="Hamza Osman")
 
 EXTRA_HEADERS=()
 
@@ -32,7 +34,7 @@ tree_rev() {
   if [[ -z "$changes" ]]; then echo "$head"; else echo "$head-dirty-$(printf '%s' "$changes" | sha1sum | cut -c1-8)"; fi
 }
 
-ready_line() { echo "READY base=$BASE_URL id=$ID rev=$GIT_REV evidence=$EVIDENCE_DIR"; }
+ready_line() { echo "READY base=$BASE_URL id=$ID rev=$GIT_REV evidence=$EVIDENCE_DIR names=${NAMES_MODE:-verify}"; }
 
 server_alive() {
   [[ -z "${SERVER_PID:-}" && -s "$RUN_DIR/server.pid" ]] && SERVER_PID="$(cat "$RUN_DIR/server.pid")"
@@ -54,9 +56,15 @@ http() {
 }
 
 cmd_up() {
+  local names
+  case "${DEMO_NAMES:-}" in
+    ""|0) names=verify ;;
+    1) names=demo ;;
+    *) die "bad-demo-names want=1|0|unset got=$DEMO_NAMES" ;;
+  esac
   if [[ -f "$STATE" ]]; then
     local report
-    if report="$(cmd_doctor)" && [[ "$report" != *"STALE build-rev"* ]]; then load_state; ready_line; return 0; fi
+    if report="$(cmd_doctor)" && [[ "$report" != *"STALE build-rev"* && "$report" == *"OK names=$names"* ]]; then load_state; ready_line; return 0; fi
     cmd_down | grep -v '^DOWN ' || true
     [[ -d "$RUN_DIR" ]] && exit 1
   fi
@@ -91,11 +99,16 @@ BASE_URL=http://127.0.0.1:$app_port
 JWT_SECRET=verify-jwt-secret
 ATTENDANCE_API_KEY=verify-attendance-key
 GIT_REV=$(tree_rev)
+NAMES_MODE=$names
 EOF
 
   local i
   (cd "$ROOT" && DATABASE_URL="$db_url" DIRECT_URL="$db_url" npx prisma migrate deploy >>"$log" 2>&1) || die "migrate log=$log"
   (cd "$ROOT" && DATABASE_URL="$db_url" DIRECT_URL="$db_url" npx prisma db seed >>"$log" 2>&1) || die "seed log=$log"
+  if [[ "$names" == demo ]]; then
+    [[ "$(psql -h 127.0.0.1 -p "$pg_port" -U postgres -d bgh -At -v ON_ERROR_STOP=1 \
+      -c "update \"User\" set name = '${DEMO_NAME[admin]}' where email = '$ADMIN_EMAIL'" 2>>"$log")" == "UPDATE 1" ]] || die "demo-names log=$log"
+  fi
   (cd "$ROOT" && npm run build >>"$log" 2>&1) || die "build log=$log"
 
   (cd "$ROOT" && exec env DATABASE_URL="$db_url" DIRECT_URL="$db_url" PORT="$app_port" HOST=127.0.0.1 \
@@ -124,6 +137,7 @@ cmd_doctor() {
   check port-owner "ss -ltnpH 'sport = :$APP_PORT' | grep -q 'pid=$SERVER_PID,'"
   check health "[[ \$(curl -s --max-time 10 $BASE_URL/health | jq -r .ok) == true ]]"
   check admin-login "[[ \$(http POST /auth/login '' '{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}') == 201 ]]"
+  echo "OK names=${NAMES_MODE:-verify}"
   local head; head="$(tree_rev)"
   if [[ "$head" == "$GIT_REV" ]]; then echo "OK build-rev $GIT_REV"; else echo "STALE build-rev built=$GIT_REV now=$head (the next up rebuilds)"; fi
   if (( fails == 0 )); then echo "DOCTOR PASS base=$BASE_URL"; else echo "DOCTOR FAIL"; return 1; fi
@@ -137,9 +151,11 @@ cmd_token() {
   local email="$ADMIN_EMAIL" password="$ADMIN_PASSWORD"
   if [[ "$role" != admin ]]; then
     email="verify-$role@example.com"; password="verify-pass-$role"
+    local name="Verify $role"
+    if [[ "${NAMES_MODE:-verify}" == demo ]]; then name="${DEMO_NAME[$role]-}"; [[ -n "$name" ]] || die "no-demo-name role=$role"; fi
     local admin; admin="$(cmd_token admin)" || { echo "$admin"; exit 1; }
-    local code; code="$(http POST /staff "$admin" "$(jq -nc --arg r "$role" --arg e "$email" --arg p "$password" \
-      '{name:("Verify "+$r), role:$r, phone:"0911000000", username:$e, password:$p, forceChangePassword:false}')")"
+    local code; code="$(http POST /staff "$admin" "$(jq -nc --arg n "$name" --arg r "$role" --arg e "$email" --arg p "$password" \
+      '{name:$n, role:$r, phone:"0911000000", username:$e, password:$p, forceChangePassword:false}')")"
     [[ "$code" == 201 ]] || die "create-staff role=$role http=$code body=$(cat "$RUN_DIR/last.body")"
   fi
   local code; code="$(http POST /auth/login '' "$(jq -nc --arg e "$email" --arg p "$password" '{email:$e,password:$p}')")"

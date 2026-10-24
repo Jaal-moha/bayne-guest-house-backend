@@ -19,12 +19,29 @@ $S up
 
 It installs deps if `node_modules` is missing, runs `prisma generate`, starts a fresh Postgres 16 cluster on a free port, runs `prisma migrate deploy`, seeds the admin user, runs `npm run build`, and starts `node dist/src/main` on another free port. Expect these outputs.
 
-- `READY base=http://127.0.0.1:<port> id=<id> rev=<git-sha>[-dirty-<hash>] evidence=<dir>` means it's up. Use that `base` and nothing else. The hash covers every change under `src` and `prisma`, untracked files included, so a second edit to a dirty tree still shows as stale.
-- `FAIL <step> log=<path>` means it isn't. Read the named log. Steps: `npm-ci`, `prisma-generate`, `install-postgres`, `hydrate-postgres`, `initdb`, `postgres-start`, `createdb`, `migrate`, `seed`, `build`, `server-exited`, `health-timeout`.
+- `READY base=http://127.0.0.1:<port> id=<id> rev=<git-sha>[-dirty-<hash>] evidence=<dir> names=verify|demo` means it's up. Use that `base` and nothing else. The hash covers every change under `src` and `prisma`, untracked files included, so a second edit to a dirty tree still shows as stale.
+- `FAIL <step> log=<path>` means it isn't. Read the named log. Steps: `npm-ci`, `prisma-generate`, `install-postgres`, `hydrate-postgres`, `initdb`, `postgres-start`, `createdb`, `migrate`, `seed`, `demo-names`, `build`, `server-exited`, `health-timeout`. `FAIL bad-demo-names` means `DEMO_NAMES` held something other than `1`, `0` or nothing.
 
 `up` is idempotent. If a healthy instance runs the current tree it prints `READY` again and reuses its database. If the instance is unhealthy, or `doctor` reports `STALE build-rev`, it tears it down and starts over, so after editing `src/` or `prisma/` a plain `up` rebuilds. Postgres comes from the `@embedded-postgres/linux-x64` npm binaries installed under `.verify/tools/`, so Docker isn't needed.
 
 `doctor` prints `STALE build-rev` when the running build is older than the working tree, and the next `up` rebuilds. The database is recreated with it, so re-run the recipe's setup steps.
+
+### Demo names
+
+`DEMO_NAMES=1 $S up` starts an instance in `names=demo` mode, for recording demos. The seeded admin is renamed `Abdirahman Ali`, and each role account `token` creates gets a display name from this table. Without the variable, or with `DEMO_NAMES=0`, the mode is `names=verify`: admin stays `Admin` and role accounts are named `Verify <role>`. Emails, passwords and roles are the same in both modes.
+
+| Role | Demo name |
+| --- | --- |
+| `admin` | Abdirahman Ali |
+| `manager` | Mohamed Hassan |
+| `reception` | Ayaan Hassan |
+| `housekeeping` | Fadumo Ahmed |
+| `barista` | Abdi Yusuf |
+| `security` | Abdullahi Omar |
+| `finance` | Maryan Ibrahim |
+| `store` | Hamza Osman |
+
+Only `up` reads `DEMO_NAMES`. It stores the mode in the instance state, and `token`, `call` and `doctor` use the stored mode, so a later command without the variable still creates a demo-named account. `doctor` prints `OK names=<mode>`. When `up` finds a healthy instance in the other mode, it tears it down and starts a fresh database in the requested mode, so names never mix.
 
 Parallel instances need `VERIFY_ID=<name>` on every command and a worktree each, with its own `node_modules` (`up` installs it when it is missing; a symlink to another checkout's `node_modules` shares the generated Prisma client). Each id gets its own ports, database, run dir and evidence dir, but `up` builds into the checkout's shared `dist/` and Prisma client, so two ids in one checkout rebuild under each other. Never drive an instance whose `up` you didn't run.
 
